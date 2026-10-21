@@ -1,87 +1,71 @@
 # Seedshift
 
-Shows which titles in Radarr and Sonarr aren't seeding on the tracker you want to consolidate on.
+Got a tracker you want to focus on? Seedshift tracks down every title that isn't on it yet.
 
-Current release: **v0.2.2**
+It lists every movie and season that isn't seeding on your target tracker, and lets you search and grab it there through Radarr or Sonarr.
 
 > [!IMPORTANT]
-> **This project is built by AI.** All of the code, the interface and this documentation were written by an AI model, through conversation with the maintainer. The maintainer decides what gets built, tests every release on a real server and publishes it, but doesn't write the code by hand. Read the code before you trust it with your setup, and report anything that looks wrong.
+> **Built by AI.** The code, interface and docs are written by an AI model. The maintainer decides what to build, tests every release on a real server and publishes it. Read the code before you trust it, and report anything that looks off.
 
-Seedshift reads one or more qBittorrent clients, Radarr and Sonarr, links every library file to the torrents that seed it, and lists the movies and seasons that have no torrent on your target tracker. From each title you can search the target and grab a release.
+## Table of Contents
 
-Scanning only reads. The one thing that changes anything is **Grab**, after a confirm: it asks Radarr or Sonarr to download the release, exactly as their own Grab button does. Seedshift never touches qBittorrent or your files itself.
+- [Security](#security)
+- [Background](#background)
+- [Install](#install)
+- [Usage](#usage)
+- [How it decides](#how-it-decides)
+- [Searching the target](#searching-the-target)
+- [Settings](#settings)
+- [Troubleshooting](#troubleshooting)
+- [Maintainers](#maintainers)
+- [Contributing](#contributing)
+- [License](#license)
 
----
+## Security
 
-## How it decides
+- There's no login. Keep Seedshift on your local network and don't expose it to the internet.
+- Scans only read. Seedshift never changes anything in qBittorrent or your files, and the data share is mounted read-only.
+- The only thing that changes anything is **Grab**, after you confirm it. It asks Radarr or Sonarr to download the release, just like their own Grab button.
+- Tracker passkeys are never stored or shown, only tracker host names.
+- API keys and passwords are stored in `/config/settings.json`, readable only by the container's user.
 
-- **Movies:** on target if any torrent seeding the movie file is on the target tracker.
-- **Seasons:** on target only if **one** torrent on the target covers every episode file in the season (a season pack). Otherwise the season is:
-  - **On target as singles:** every episode is on the target, but as separate torrents.
-  - **Partly on target:** some episodes are on the target.
-  - **Not on target:** seeding, but only elsewhere.
-- **On target, but not seeding:** the target torrent exists but is stopped, errored or missing files.
-- **Not seeding:** no torrent in qBittorrent seeds the file at all (usenet imports, removed torrents). Only torrents qBittorrent reports as seeding count; stopped and errored ones don't.
-- **Airing** seasons (Sonarr has a next airing date) are hidden by default, since no pack exists yet. **Incomplete** seasons are flagged.
+## Background
 
-### Linking files to torrents
+Most people seed on several trackers. If you want to build up your seed size on one of them, you need to know which titles in your library aren't seeding there yet. Checking that by hand, title by title, takes forever.
 
-1. **Hardlink:** a library file and the torrent's file share an inode. This is exact and needs the data share mounted in the container.
-2. **File size:** the exact byte size of the file matches a torrent file. This catches copies and works without the share mounted. Files under the minimum size (default 50 MB) are skipped.
+Seedshift does the checking for you. It links every file in Radarr and Sonarr to the torrents in qBittorrent, using hardlinks where possible and file size otherwise, and reads which tracker each torrent is on. TV is judged by season, because what you usually want on your main tracker is a season pack, not scattered episodes.
 
-Cross-seeds count automatically: every torrent pointing at the same files is seen.
+## Install
 
-### Trackers
+### Dependencies
 
-A torrent's tracker is the host of its announce URL, such as `tracker.example.org`. Stopped torrents report no tracker in qBittorrent's list, so Seedshift asks for their tracker list instead. Passkeys are never stored or shown.
+- Docker with Docker Compose
+- qBittorrent (one or more)
+- Radarr and/or Sonarr
+- Optional: Prowlarr, to search only your target tracker
+- Recommended: one data share with hardlinks between downloads and media. Without hardlinks, matching falls back to file size.
 
-### Searching the target
-
-The **Search** button on a title runs an interactive search limited to the target indexer and shows the results in a window. For shows it searches the whole season, so packs come first; single episodes are behind a checkbox.
-
-Choose how under **Settings → Target tracker → Search with**:
-
-| | Radarr / Sonarr | Prowlarr |
-| --- | --- | --- |
-| Who gets a search hit | Every indexer in the Arr (results are filtered afterwards) | Only the target |
-| Quality, custom format score | The Arr's | The Arr's (each title is parsed by it) |
-| Releases the Arr rejects | Shown with the reason; **Force grab** downloads them anyway | Pushed to the Arr, which refuses them |
-| Download, category, tags | The Arr's | The Arr's |
-
-**Results can differ between the two.** Searching through Radarr or Sonarr only finds what the indexer *as set up in that Arr* returns, and a few things can narrow that down: the indexer being temporarily disabled in the Arr after failures (Seedshift tells you when), interactive search turned off for the indexer, a sync profile or tags that keep the target out of that Arr, the Arr's category or minimum-seeder settings, or the Arr searching by an ID the tracker doesn't index. Prowlarr asks the tracker directly and falls back to a title search when an ID search finds nothing. If one finds nothing, try the other. Use Radarr/Sonarr mode when you need **Force grab**.
-
-**Target indexer** tells Seedshift which indexer is the target tracker. If you don't pick one, it uses the indexer whose site address matches the target tracker.
-
-**Not an upgrade:** to move seed size you often grab the same quality from the target. Radarr and Sonarr download it but won't replace an equal file on their own; it waits in **Activity → Queue**. Finish it there with **Manual Import**.
-
-**Same size as your file** marks a release within 1% of what you have: almost certainly the exact same release. cross-seed can usually add that one without downloading anything.
-
----
-
-## Docker Compose
+### Docker Compose
 
 ```yaml
 services:
   seedshift:
     image: ghcr.io/grompty/seedshift:latest
     container_name: seedshift
-    networks:
-      - media-network
     volumes:
       - /path/to/data:/data:ro
       - ./config:/config
     ports:
-      - "8080:8080"
+      - "8095:8080"
     restart: unless-stopped
-
-networks:
-  media-network:
-    external: true
 ```
 
-The image runs on amd64 and arm64. Use a version tag such as `ghcr.io/grompty/seedshift:0.2.2` instead of `latest` to stay on one release.
+- Mount the **same share** qBittorrent, Radarr and Sonarr use, at the **same path** they use (usually `/data`). Then no path mappings are needed.
+- `:ro` keeps it read-only. Seedshift never writes to your media.
+- Optional: if your other containers share a Docker network, add Seedshift to it and use container names like `http://radarr:7878` in Settings. IP addresses work too.
+- Optional: to run as a specific user, add `user: "UID:GID"`. Find the values with `id`.
 
-Mount the **same share** qBittorrent, Radarr and Sonarr use, at the **same path** they use. With the usual hardlink layout that's one share at `/data` holding both `torrents/` and `media/`. On Unraid:
+On Unraid:
 
 ```yaml
     volumes:
@@ -89,95 +73,110 @@ Mount the **same share** qBittorrent, Radarr and Sonarr use, at the **same path*
       - /mnt/user/appdata/seedshift/config:/config
 ```
 
-`:ro` is deliberate: Seedshift never writes to your media. Downloads go through Radarr and Sonarr.
-
-To find the right `user:` on Synology or other hosts, run:
-
-```bash
-id
-```
-
-### Start and update
+Start it:
 
 ```bash
 docker compose up -d
-docker compose logs -f seedshift
 ```
 
-To update to the newest release:
+To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Updating
 
 ```bash
 docker compose pull && docker compose up -d
 ```
 
-To build from source instead, replace the `image:` line with `build: .` and run `docker compose up -d --build`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.2.3` instead of `latest`.
 
-Open `http://HOST:8080`.
+## Usage
 
----
+Open Seedshift in your browser:
 
-## Setup
+```
+http://YOUR-SERVER:8095
+```
 
-1. **Settings → Connections → Download clients:** add each qBittorrent you run, with its Web UI URL, username and password, then **Test and save**. Leave the username blank if qBittorrent bypasses auth for this network. Torrents from every client count.
-2. **Settings → Connections → Libraries:** add each Radarr and Sonarr with its API key. Multiple instances are fine, such as an anime Sonarr. **Browser URL** is optional; set it if the base URL is a Docker name like `http://radarr:7878` that your browser can't open.
-3. Optional: **Settings → Connections → Search:** add Prowlarr if you want searches to hit only the target.
-4. Press **Scan now**.
-5. Pick the target: **Make target** on the Overview, or **Settings → Target tracker**. Changing the target doesn't need a new scan. Check **Target indexer** on the same page.
+1. **Settings → Connections:** add your qBittorrent clients (Web UI address, username, password), then Radarr and Sonarr (address and API key). Prowlarr is optional. Press **Test and save** for each one.
+2. Press **Scan now**. Seedshift reads every torrent and every file in your library. The first scan of a big library can take a few minutes.
+3. Pick your target tracker: press **Make target** next to it on the Overview, or enter it under **Settings → Target tracker**. Changing it later doesn't need a new scan.
+4. Open **Titles**. Everything listed there isn't on your target yet, largest first. Use **Search** on a title to find it on the target and grab it.
 
 ### Path mappings
 
-Only needed when an app sees the share at a different path than this container. Example: qBittorrent saves to `/downloads`, and that folder is `/data/torrents` here:
+You only need these if an app sees the share at a different path than Seedshift. For example, if qBittorrent saves to `/downloads` and that folder is mounted at `/data/torrents` in Seedshift, add the mapping `/downloads` → `/data/torrents` under **Settings → Paths**. The Overview warns you when Seedshift can't see your library files.
 
-| Path in the app | Path in Seedshift |
+## How it decides
+
+Every movie and every season gets one status:
+
+| Status | Meaning |
 | --- | --- |
-| `/downloads` | `/data/torrents` |
+| On target | A torrent on your target tracker seeds it. For a season, one torrent has to cover every episode, so a season pack. |
+| On target as singles | Every episode is on the target, but as separate torrents. |
+| Partly on target | Some episodes are on the target. |
+| On target, but not seeding | The target torrent exists but is stopped, errored or missing files. |
+| Not on target | Seeding, but only on other trackers. |
+| Not seeding | No torrent in qBittorrent seeds it at all, for example a Usenet download. |
 
-The Overview warns when no library files are visible, and shows a path it looked for.
+Seasons that are still airing are hidden by default, since there's no pack yet. Incomplete seasons are flagged.
 
----
+Files are linked to torrents by **hardlink** when Seedshift can see your data share, which is exact, and by **exact file size** otherwise. Cross-seeds count automatically.
 
-## Settings reference
+## Searching the target
 
-| Setting | Default | Notes |
+**Search** on a title shows releases from your target tracker only. For a show it searches the whole season, so season packs come first. **Grab** sends the release to Radarr or Sonarr, which download it with your usual quality profile, category and tags.
+
+Under **Settings → Target tracker → Search with** you choose how:
+
+- **Radarr / Sonarr** (default): uses their own interactive search, which searches all their indexers. Releases they'd normally skip get a **Force grab** button.
+- **Prowlarr:** only your target tracker gets a search. If Radarr or Sonarr rejects the release, you'll see why.
+
+Results can differ between the two. If one finds nothing, try the other.
+
+**Not an upgrade?** If you grab the same quality you already have, Radarr and Sonarr download it but don't replace your file on their own. Finish it with **Manual Import** in Radarr or Sonarr.
+
+**Same size as your file** marks a release that's almost certainly the one you already have. cross-seed can usually add that one without downloading anything.
+
+## Settings
+
+| Setting | Default | What it does |
 | --- | --- | --- |
-| Target tracker | none | Announce host. Comma-separate several hosts of one site. Subdomains match. |
+| Target tracker | none | The tracker you want to focus on, by its announce host (for example `tracker.example.org`). Several hosts of the same site can be comma-separated, and subdomains count too. |
+| Target indexer | picked automatically | Which indexer is your target, for **Search**. Picked automatically when an indexer's site matches the target tracker. |
+| Search with | Radarr / Sonarr | Or Prowlarr, which only searches your target. |
 | Matching | Hardlink, then size | Or hardlink only, or size only. |
-| Size match minimum | 50 MB | Smaller files only match by hardlink. |
-| Automatic scan | 6 hours | Or manual only. |
-| Include specials | off | Counts Sonarr season 0. |
-| Target indexer | matches target | Which indexer the Search button keeps results from. |
-| Search with | Radarr / Sonarr | Or Prowlarr, which only searches the target. |
+| Size match minimum | 50 MB | Smaller files are only matched by hardlink. |
+| Automatic scan | every 6 hours | Or manual only. |
+| Include specials | off | Counts Sonarr's season 0 as a season. |
 
-Everything is stored in `/config`:
+Settings, API keys and passwords are stored in `/config/settings.json`. The last scan is kept in `/config/scan.json`.
 
-| File | Contents |
-| --- | --- |
-| `settings.json` | Settings, API keys and qBittorrent passwords (mode 600) |
-| `scan.json` | The last scan |
-| `tracker-cache.json` | Tracker hosts for stopped torrents |
+## Troubleshooting
 
-There is no built-in login. Don't expose Seedshift to the internet.
+**qBittorrent says the username or password is wrong.** Use the same login as qBittorrent's Web UI. If qBittorrent skips the login for your local network, leave the username empty.
 
----
+**Nothing is linked, or everything shows "Not seeding".** Seedshift can't see your files. Check that the data share is mounted at the same path the other apps use, or add a path mapping. The Overview shows a path it looked for.
 
-## Releasing
+**Search finds nothing, but the release is on the tracker.**
+- The tracker may be down right now. Check the tracker's status, and the indexer's status in Prowlarr, Radarr or Sonarr.
+- Check that the indexer has **interactive search** turned on in Radarr or Sonarr, and that the target indexer under **Settings → Target tracker** is the right one.
+- Try the other **Search with** option. They can find different things.
 
-Images are built by GitHub Actions (`.github/workflows/docker.yml`) and published to `ghcr.io/grompty/seedshift`:
+**A grabbed release never gets imported.** It's probably not an upgrade over your current file. Finish it with **Manual Import** in Radarr or Sonarr.
 
-- A tag such as `v0.2.1` publishes `0.2.1`, `0.2` and `latest`.
-- A push to `main` publishes `edge`, for testing.
+## Maintainers
 
-To release, update `APP_VERSION` in `engine.py` and the changelog, then:
+Questions, bugs and ideas go to [GitHub Issues](https://github.com/grompty/seedshift/issues).
 
-```bash
-git commit -am "v0.2.1" && git tag v0.2.1 && git push && git push --tags
-```
+## Contributing
 
-## Development
+Pull requests are welcome. For bigger changes, open an issue first so we can agree on it before you put in the work.
 
-```bash
-python3 dev/make_fixtures.py /tmp/ss-data
-python3 dev/mock_services.py /tmp/ss-data/mock.json 9797
-```
+To build the image yourself, run Seedshift from source or make a release, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-This builds a fake share with real hardlinks and serves two mock qBittorrents (`/qbit` and `/qbit2`, user `admin`, password `secret`), Radarr (`/radarr`), Sonarr (`/sonarr`) and Prowlarr (`/prowlarr`) on port 9797, API key `testkey`. Grabs sent to the mocks are listed at `/_grabs`. Map `/data` to `/tmp/ss-data` in **Settings → Paths**.
+When you report a bug, include your Seedshift version (shown on the Overview under **Last scan**) and the relevant part of `docker logs seedshift`. Remove API keys and passwords first.
+
+## License
+
+[MIT](LICENSE) © 2026 grompty

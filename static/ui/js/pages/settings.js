@@ -226,7 +226,7 @@ export function mount(container) {
   function target() {
     const hosts = textInput(draft.target_trackers, (v) => { setDraft("target_trackers", v); }, { placeholder: "tracker.example.org" });
     const hasProwlarr = server.connections.some((c) => c.type === "prowlarr");
-    const via = selectInput([["prowlarr", "Prowlarr (target only)"], ["arr", "Radarr / Sonarr (all indexers)"]], draft.search_via, (v) => { setDraft("search_via", v); paintVia(); });
+    const via = selectInput([["arr", "Radarr / Sonarr (all indexers)"], ["prowlarr", "Prowlarr (target only)"]], draft.search_via, (v) => { setDraft("search_via", v); paintVia(); });
     const viaHint = h("p", { class: "hint" });
     function paintVia() {
       replace(viaHint, draft.search_via === "prowlarr"

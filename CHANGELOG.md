@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.3
+
+- New README, plus CONTRIBUTING.md (building from source, development, releasing) and an MIT license.
+- The example compose file uses port 8095, since 8080 is qBittorrent's default, and the Docker network is now optional.
+- **Search with** lists Radarr / Sonarr first again, the default.
+
 ## v0.2.2
 
 - Fixed the sidebar service tooltips being cut off at the sidebar's edge.

@@ -1,22 +1,20 @@
 services:
   seedshift:
     image: ghcr.io/grompty/seedshift:latest
-    # To build from source instead, remove the image line above and use:
-    # build: .
     container_name: seedshift
-    # Optional: run as a specific host UID:GID (check with: id)
-    # user: "99:100"
-    networks:
-      - media-network
     volumes:
-      # The same share qBittorrent, Radarr and Sonarr use, read-only.
-      # Mount it at the same path they use (usually /data) and no path mappings are needed.
+      # The same share qBittorrent, Radarr and Sonarr use, read-only, at the same path they use.
       - /path/to/data:/data:ro
       - ./config:/config
     ports:
-      - "8080:8080"
+      - "8095:8080"
     restart: unless-stopped
+    # Optional: run as a specific user (find the values with: id)
+    # user: "1000:1000"
+    # Optional: join the network your other containers use, to reach them by name.
+    # networks:
+    #   - media-network
 
-networks:
-  media-network:
-    external: true
+# networks:
+#   media-network:
+#     external: true
