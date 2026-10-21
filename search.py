@@ -12,6 +12,7 @@ Searches run in a background thread; the browser polls for the result.
 """
 
 import concurrent.futures
+import re
 import threading
 import time
 import urllib.parse
@@ -116,11 +117,24 @@ def find_item(key):
     raise ValueError("That title isn't in the last scan. Scan again and retry.")
 
 
-def same_size(release_size, item_size):
-    """Release size within 1% of what's on disk: almost certainly the release you already have."""
-    if not release_size or not item_size:
+def release_group(title):
+    """'Movie.2020.1080p.BluRay.x264-GRP' -> 'grp'. Ignores a trailing file extension or [tag]."""
+    t = re.sub(r"\[[^\]]*\]$|\.(mkv|mp4|avi|torrent)$", "", str(title or "").strip(), flags=re.I).strip()
+    m = re.search(r"-([A-Za-z0-9][A-Za-z0-9._]*)$", t)
+    return m.group(1).lower() if m else ""
+
+
+def same_release(title, release_size, item):
+    """Same release group as your file and nearly the same size: very likely the exact release you have.
+
+    Size alone isn't enough, since different groups' encodes can land within a percent of each other.
+    """
+    mine = str(item.get("group") or "").lower()
+    theirs = release_group(title)
+    if not mine or not theirs or not (mine == theirs or mine.endswith("-" + theirs)):    # D-Z0N3 parses as z0n3
         return False
-    return abs(release_size - item_size) <= item_size * 0.01
+    size = item.get("size") or 0
+    return bool(release_size and size) and abs(release_size - size) <= size * 0.01
 
 
 def quality_name(q):
@@ -274,7 +288,7 @@ def _run(job_id):
         else:
             results = _arr_search(job, conn, kind, arr_id, season, set(wanted))
         for r in results:
-            r["same_size"] = same_size(r["size"], item.get("size"))
+            r["same_release"] = same_release(r["title"], r["size"], item)
         job["results"] = results[:MAX_RESULTS]
         job["hidden"] += max(0, job["total"] - len(results)) if job["via"] == "arr" else 0
         job["status"] = "done"
@@ -317,6 +331,7 @@ def public(job):
     return {
         "id": job["id"], "key": job["key"], "via": job["via"], "status": job["status"], "error": job["error"],
         "warning": job.get("warning"),
+        "auto_replace": cfg("auto_replace") == "on",
         "elapsed": round((job["finished_at"] or time.time()) - job["started_at"]),
         "total": job["total"], "hidden": job["hidden"], "indexers": job["indexers"], "guessed": job["guessed"],
         "results": [{**{k: v for k, v in r.items() if not k.startswith("_")}, "index": i,
@@ -336,24 +351,41 @@ def grab(job_id, index):
     if job["grabbed"].get(index):
         raise ValueError("Already sent.")
     release = job["results"][index]
-    conn_id, kind, _arr_id, _season = parse_key(job["key"])
+    conn_id, kind, _arr_id, season = parse_key(job["key"])
     conn = get_connection(conn_id)
     if not conn:
         raise ServiceError("That title's Radarr/Sonarr connection no longer exists.")
     arr = engine.TYPE_NAMES[conn["type"]]
+    try:
+        item = find_item(job["key"])
+    except ValueError:
+        item = {}
+    entry = {
+        "key": job["key"], "kind": kind, "title": item.get("title", ""), "year": item.get("year", ""), "season": season,
+        "release": release["title"], "indexer": release.get("indexer", ""), "size": release.get("size", 0),
+        "quality": release.get("quality", ""), "via": job["via"], "forced": bool(release.get("rejected")),
+        "connection_id": conn["id"], "connection": conn["name"],
+    }
 
-    if "_grab" in release:
-        if time.time() - job["started_at"] > KEEP_SECONDS:
-            raise ValueError(f"{arr} has forgotten this search. Search again.")
-        arr_request(conn, "POST", "/api/v3/release", release["_grab"], timeout=60)
-        message = f"Sent to {arr}."
-    else:
-        reply = arr_request(conn, "POST", "/api/v3/release/push", release["_push"], timeout=60)
-        decision = reply[0] if isinstance(reply, list) and reply else reply if isinstance(reply, dict) else {}
-        if decision.get("rejected"):
-            reasons = [str(x.get("reason") if isinstance(x, dict) else x) for x in decision.get("rejections") or []]
-            raise ServiceError(f"{arr} rejected it: " + ("; ".join(reasons) or "no reason given") + ".")
-        message = f"{arr} accepted it."
+    try:
+        if "_grab" in release:
+            if time.time() - job["started_at"] > KEEP_SECONDS:
+                raise ValueError(f"{arr} has forgotten this search. Search again.")
+            arr_request(conn, "POST", "/api/v3/release", release["_grab"], timeout=60)
+            message = f"Sent to {arr}."
+        else:
+            reply = arr_request(conn, "POST", "/api/v3/release/push", release["_push"], timeout=60)
+            decision = reply[0] if isinstance(reply, list) and reply else reply if isinstance(reply, dict) else {}
+            if decision.get("rejected"):
+                reasons = [str(x.get("reason") if isinstance(x, dict) else x) for x in decision.get("rejections") or []]
+                raise ServiceError(f"{arr} rejected it: " + ("; ".join(reasons) or "no reason given") + ".")
+            message = f"{arr} accepted it."
+    except (ServiceError, ValueError) as e:
+        engine.record_grab({**entry, "ok": False, "message": str(e)})
+        raise
+    if cfg("auto_replace") == "on":
+        entry["replace"] = {"state": "waiting", "message": "Waiting for the download to show up.", "updated": engine.utc_now()}
+    engine.record_grab({**entry, "ok": True, "message": message})
     with LOCK:
         job["grabbed"][index] = message
     engine.log.info(f"Grab: {release['title']} via {job['via']} -> {conn['name']}")

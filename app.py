@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, render_template, request
 
 import engine
+import replace
 from api import bp as api_bp
 
 app = Flask(__name__)
@@ -11,6 +12,7 @@ app.register_blueprint(api_bp)
 @app.route("/", methods=["GET"])
 @app.route("/titles", methods=["GET"])
 @app.route("/settings", methods=["GET"])
+@app.route("/history", methods=["GET"])
 def ui_shell():
     return render_template("shell.html", version=engine.APP_VERSION)
 
@@ -28,3 +30,4 @@ def health():
 
 
 engine.start_background()
+replace.start()

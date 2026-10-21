@@ -33,12 +33,14 @@ from copy import deepcopy
 logging.basicConfig(level=logging.INFO, format="[seedshift] %(message)s")
 log = logging.getLogger("seedshift")
 
-APP_VERSION = "0.2.3"
+APP_VERSION = "0.2.4"
 
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
 SCAN_FILE = os.path.join(CONFIG_DIR, "scan.json")
 TRACKER_CACHE_FILE = os.path.join(CONFIG_DIR, "tracker-cache.json")
+HISTORY_FILE = os.path.join(CONFIG_DIR, "history.jsonl")
+HISTORY_KEEP = 500
 
 USER_AGENT = f"seedshift/{APP_VERSION}"
 HTTP_TIMEOUT = 30
@@ -51,6 +53,7 @@ DEFAULT_SETTINGS = {
     "include_specials": "off",
     "scan_interval_minutes": "360",  # 0 = manual only
     "search_via": "arr",             # arr | prowlarr
+    "auto_replace": "off",           # on: after a grab, have the Arr import it even when it isn't an upgrade
 }
 CONNECTION_TYPES = ("qbittorrent", "radarr", "sonarr", "prowlarr")
 TYPE_NAMES = {"qbittorrent": "qBittorrent", "radarr": "Radarr", "sonarr": "Sonarr", "prowlarr": "Prowlarr"}
@@ -260,6 +263,8 @@ def apply_settings_patch(patch):
             if n not in SCAN_INTERVALS:
                 raise ValueError("Invalid scan interval.")
             updated[key] = str(n)
+        elif key == "auto_replace":
+            updated[key] = "on" if value in ("on", True, "true") else "off"
         elif key == "search_via":
             if value not in ("arr", "prowlarr"):
                 raise ValueError("Search must go through the Arrs or Prowlarr.")
@@ -773,6 +778,7 @@ def _scan_radarr(conn, errors):
             "slug": m.get("titleSlug") or "",
             "quality": ((mf.get("quality") or {}).get("quality") or {}).get("name", ""),
             "release": mf.get("sceneName") or mf.get("releaseGroup") or "",
+            "group": mf.get("releaseGroup") or "",
             "files": [{"path": mf["path"], "size": int(mf.get("size") or 0)}],
         })
     return items
@@ -800,12 +806,14 @@ def _scan_sonarr(conn, include_specials, errors):
                 continue
             seasons_meta = {s.get("seasonNumber"): s for s in series.get("seasons") or []}
             by_season = {}
+            groups = {}
             for ef in files:
                 number = ef.get("seasonNumber")
                 if number is None or (number == 0 and not include_specials):
                     continue
                 if ef.get("path"):
                     by_season.setdefault(number, []).append({"path": ef["path"], "size": int(ef.get("size") or 0)})
+                    groups.setdefault(number, set()).add(str(ef.get("releaseGroup") or "").lower())
             for number, season_files in sorted(by_season.items()):
                 stats = (seasons_meta.get(number) or {}).get("statistics") or {}
                 total = int(stats.get("totalEpisodeCount") or 0)
@@ -828,6 +836,8 @@ def _scan_sonarr(conn, include_specials, errors):
                     "aired_episodes": aired,
                     "airing": airing,
                     "files": season_files,
+                    # One group for the whole season only when every episode file has the same one.
+                    "group": next(iter(groups.get(number, set()))) if len(groups.get(number, set())) == 1 else "",
                 })
     return items
 
@@ -976,6 +986,78 @@ def arr_link(conn, item):
 STATUS_ORDER = {"not_seeding": 0, "missing": 1, "target_stopped": 2, "partial": 3, "singles": 4, "on_target": 5}
 
 
+# ── Grab history ──────────────────────────────────────────────────────────
+# One JSON object per line in /config/history.jsonl, oldest first. Entries get updated in place
+# while an automatic replace is in progress, so the file is rewritten (it's capped at HISTORY_KEEP).
+
+HISTORY_LOCK = threading.Lock()
+
+
+def _read_history_unlocked():
+    out = []
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    continue
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        log.warning(f"Could not read history: {e}")
+    return out
+
+
+def _write_history_unlocked(entries):
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        tmp = HISTORY_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            for e in entries[-HISTORY_KEEP:]:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        os.replace(tmp, HISTORY_FILE)
+    except OSError as e:
+        log.warning(f"Could not save history: {e}")
+
+
+def record_grab(entry):
+    """Add one grab attempt, successful or not. Returns the stored entry."""
+    entry = {"id": uuid.uuid4().hex[:12], "ts": utc_now(), **entry}
+    with HISTORY_LOCK:
+        entries = _read_history_unlocked()
+        entries.append(entry)
+        _write_history_unlocked(entries)
+    return entry
+
+
+def update_grab(entry_id, **changes):
+    with HISTORY_LOCK:
+        entries = _read_history_unlocked()
+        for e in entries:
+            if e.get("id") == entry_id:
+                e.update(changes)
+                break
+        else:
+            return
+        _write_history_unlocked(entries)
+
+
+def grab_history():
+    """All history entries, newest first."""
+    with HISTORY_LOCK:
+        return list(reversed(_read_history_unlocked()))
+
+
+def last_grabs():
+    """{title key: its newest successful grab}."""
+    latest = {}
+    for e in grab_history():
+        if e.get("ok") and e.get("key") not in latest:
+            latest[e["key"]] = {"ts": e["ts"], "release": e.get("release", ""), "replace": (e.get("replace") or {}).get("state")}
+    return latest
+
+
 def evaluated_items(kind):
     """All movies or seasons from the last scan with status for the current target."""
     scan = last_scan()
@@ -985,6 +1067,7 @@ def evaluated_items(kind):
     targets = target_hosts()
     ignored = set(cfg("ignored"))
     connections = {c["id"]: c for c in get_connections()}
+    grabs = last_grabs()
     out = []
     for item in scan.get("movies" if kind == "movie" else "seasons", []):
         if kind == "movie":
@@ -1018,6 +1101,7 @@ def evaluated_items(kind):
             "match": "inode" if "inode" in matches else "size" if "size" in matches else "none",
             "ignored": item["key"] in ignored,
             "arr_url": arr_link(conn, item),
+            "last_grab": grabs.get(item["key"]),
         })
     return out
 

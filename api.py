@@ -162,6 +162,16 @@ def trackers():
     return jsonify({"trackers": engine.overview()["trackers"], "targets": engine.target_hosts()})
 
 
+@bp.get("/history")
+def history():
+    try:
+        limit = max(1, min(500, int(request.args.get("limit") or 200)))
+    except ValueError:
+        limit = 200
+    entries = engine.grab_history()
+    return jsonify({"entries": entries[:limit], "total": len(entries)})
+
+
 @bp.get("/indexers")
 def indexers():
     """Indexers in the Arrs and Prowlarr, to choose the target indexer from."""

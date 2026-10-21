@@ -9,6 +9,7 @@ import { navigate } from "./router.js";
 const NAV = [
   { href: "/", route: "overview", icon: "house", label: "Overview" },
   { href: "/titles", route: "titles", icon: "film", label: "Titles" },
+  { href: "/history", route: "history", icon: "clock-rotate-left", label: "History" },
   { href: "/settings", route: "settings", icon: "gear", label: "Settings" },
 ];
 
@@ -17,6 +18,19 @@ const readCollapsed = () => { try { return localStorage.getItem(COLLAPSE_KEY) ==
 const writeCollapsed = (v) => { try { localStorage.setItem(COLLAPSE_KEY, v ? "collapsed" : "open"); } catch { /* private mode */ } };
 
 let sidebar, scrim, toggleButton, servicesEl, jobsEl, collapsedBadge;
+
+// Seedshift logo: two database stacks with arrows circling between them. Stroked, so it isn't in icons.js.
+const LOGO_PATH = "M4 7.5A10 3.5 0 1 0 24 7.5A10 3.5 0 1 0 4 7.5M4 7.5V26.5M24 7.5V26.5M4 26.5A10 3.5 0 0 0 24 26.5M4 13.8A10 3.5 0 0 0 24 13.8M4 20.2A10 3.5 0 0 0 24 20.2M40 37.5A10 3.5 0 1 0 60 37.5A10 3.5 0 1 0 40 37.5M40 37.5V56.5M60 37.5V56.5M40 56.5A10 3.5 0 0 0 60 56.5M40 43.8A10 3.5 0 0 0 60 43.8M40 50.2A10 3.5 0 0 0 60 50.2M28 8C42 8 50 16 50 28M46 24L50 29L54 24M36 56C22 56 14 48 14 36M18 40L14 35L10 40";
+function logo() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  for (const [k, v] of Object.entries({ viewBox: "0 0 64 64", fill: "none", stroke: "currentColor", "stroke-width": "3.6",
+    "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false", class: "icon brand__icon" })) svg.setAttribute(k, v);
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", LOGO_PATH);
+  svg.append(path);
+  return svg;
+}
 
 export function openMenu() {
   sidebar.dataset.open = "true";
@@ -130,10 +144,10 @@ export function buildShell(root) {
 
   sidebar = h("aside", { class: "sidebar", id: "sidebar", "data-open": "false" },
     h("a", { class: "brand", href: "/", "aria-label": "Seedshift, overview" },
-      h("span", { class: "brand__mark" }, icon("tower-broadcast", "icon brand__icon")),
+      h("span", { class: "brand__mark" }, logo()),
       h("span", { class: "brand__text" },
-        h("span", { class: "brand__name" }, "Seedshift"),
-        h("span", { class: "brand__sub", title: version ? `v${version}` : null }, "Tracker consolidation"))),
+        h("span", { class: "brand__name" }, "Seedshift", version ? h("span", { class: "brand__version" }, `v${version}`) : null),
+        h("span", { class: "brand__sub" }, "Focus your seed size"))),
     toggleButton,
     h("nav", { class: "nav", "aria-label": "Primary" },
       NAV.map((n) => h("a", { class: "nav__item", href: n.href, "data-route": n.route, title: n.label },

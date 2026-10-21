@@ -246,6 +246,84 @@ def pdownload():
     return b"d8:announce3:xyz4:infod4:name4:testee", 200, {"Content-Type": "application/x-bittorrent"}
 
 
+# ── Download queue, manual import and commands (for automatic replace) ──────
+# A grabbed release shows as downloading on the first queue check, then finished.
+# REMUX releases get imported by the Arr itself; everything else is blocked as "not an upgrade".
+QUEUE_POLLS = {}
+COMMANDS = {}
+
+
+def grabbed_titles(arr):
+    titles = []
+    for g in GRABS:
+        if g["arr"] != arr or g["kind"] not in ("grab", "push"):
+            continue
+        title = g.get("title")
+        if not title:
+            for m in data["movies"]:
+                for r in releases_for_movie(m["id"]):
+                    if r["guid"] == g.get("guid"):
+                        title = r["title"]
+        if title and not ("1080p.BluRay" in title and g["kind"] == "push"):   # rejected pushes never download
+            titles.append(title)
+    return titles
+
+
+@app.get("/<arr>/api/v3/queue")
+def arr_queue(arr):
+    arr_auth()
+    records = []
+    for title in grabbed_titles(arr):
+        did = "DL" + str(abs(hash(title)) % 10**8)
+        n = QUEUE_POLLS[did] = QUEUE_POLLS.get(did, 0) + 1
+        if n == 1:
+            records.append({"title": title, "downloadId": did, "size": 1000, "sizeleft": 600, "status": "downloading",
+                            "trackedDownloadStatus": "ok", "trackedDownloadState": "downloading", "statusMessages": []})
+        elif "REMUX" not in title and not any(c.get("downloadId") == did for c in COMMANDS.values()):
+            records.append({"title": title, "downloadId": did, "size": 1000, "sizeleft": 0, "status": "completed",
+                            "trackedDownloadStatus": "warning", "trackedDownloadState": "importBlocked",
+                            "statusMessages": [{"title": title, "messages": ["Not an upgrade for existing movie file. Existing quality: Remux-2160p. New Quality Bluray-1080p."]}]})
+    return jsonify({"records": records})
+
+
+@app.get("/<arr>/api/v3/history")
+def arr_history(arr):
+    arr_auth()
+    did = request.args.get("downloadId", "")
+    for title in grabbed_titles(arr):
+        if "DL" + str(abs(hash(title)) % 10**8) == did and "REMUX" in title:
+            return jsonify({"records": [{"eventType": "grabbed"}, {"eventType": "downloadFolderImported"}]})
+    return jsonify({"records": []})
+
+
+@app.get("/<arr>/api/v3/manualimport")
+def arr_manualimport(arr):
+    arr_auth()
+    did = request.args.get("downloadId", "")
+    return jsonify([
+        {"path": f"/data/torrents/{did}/movie.mkv", "movie": {"id": 2}, "quality": {"quality": {"name": "Bluray-1080p"}},
+         "languages": [{"id": 1}], "releaseGroup": "GRP2", "rejections": [{"reason": "Not an upgrade for existing movie file"}]},
+        {"path": f"/data/torrents/{did}/sample.mkv", "movie": {"id": 2}, "quality": {}, "rejections": [{"reason": "Sample"}]},
+    ])
+
+
+@app.post("/<arr>/api/v3/command")
+def arr_command(arr):
+    arr_auth()
+    body = request.get_json()
+    cid = len(COMMANDS) + 77
+    COMMANDS[cid] = {"downloadId": (body.get("files") or [{}])[0].get("downloadId"), **body}
+    GRABS.append({"arr": arr, "kind": "command", "name": body.get("name"), "files": [f["path"] for f in body.get("files", [])],
+                  "importMode": body.get("importMode")})
+    return jsonify({"id": cid, "status": "queued"})
+
+
+@app.get("/<arr>/api/v3/command/<int:cid>")
+def arr_command_status(arr, cid):
+    arr_auth()
+    return jsonify({"id": cid, "status": "completed" if cid in COMMANDS else "failed"})
+
+
 @app.get("/_grabs")
 def grabs():
     return jsonify(GRABS)

@@ -10,6 +10,7 @@ Never include API keys, passwords, tracker passkeys or your own media paths in i
 | --- | --- |
 | `engine.py` | Settings, qBittorrent/Radarr/Sonarr/Prowlarr clients, scanning, matching and statuses. No Flask. |
 | `search.py` | Search on the target indexer (through the Arr or Prowlarr) and Grab. |
+| `replace.py` | Follows grabs in the Arr's queue and runs the manual import for **Replace my file after a grab**. |
 | `api.py` | The JSON API under `/api`. |
 | `app.py` | The HTML shell and `/health`. |
 | `templates/`, `static/ui/` | The whole front end: vanilla ES modules, no build step. |
@@ -50,6 +51,15 @@ This builds a fake data share with real hardlinks and runs mock services on port
 
 Grabs sent to the mocks are listed at `http://127.0.0.1:9797/_grabs`.
 
+For the README screenshots there's a demo library with made-up titles and example tracker names:
+
+```bash
+python3 dev/make_demo.py /tmp/ss-demo
+python3 dev/mock_services.py /tmp/ss-demo/mock.json 9797
+```
+
+The screenshots are taken at 1280×800 and saved in `docs/screenshots/`.
+
 Start Seedshift against them:
 
 ```bash
@@ -76,7 +86,7 @@ Things that must keep working:
 
 Images are built by GitHub Actions and published to `ghcr.io/grompty/seedshift`:
 
-- A tag such as `v0.2.3` publishes `0.2.3`, `0.2` and `latest`.
+- A tag such as `v0.2.4` publishes `0.2.4`, `0.2` and `latest`.
 - A push to `main` publishes `edge`, for testing.
 
 To release:
@@ -86,5 +96,5 @@ To release:
 3. Commit, tag and push:
 
 ```bash
-git commit -am "v0.2.3" && git tag v0.2.3 && git push && git push --tags
+git commit -am "v0.2.4" && git tag v0.2.4 && git push && git push --tags
 ```

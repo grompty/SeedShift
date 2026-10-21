@@ -16,6 +16,7 @@ Flask + Waitress app that lists Radarr/Sonarr titles not seeding on a chosen tra
 
 ## Behavior to keep
 - Never write to qBittorrent or media. The data share is mounted read-only.
+- Automatic replace (setting, off by default) only uses the Arr's own manual import, and only for "not an upgrade" blocks (`replace.py`).
 - Grabs only go through Radarr/Sonarr (release or release/push), always after a confirm in the UI. Search results stay server-side; the browser only sends a result index.
 - Connections are one list with types qbittorrent, radarr, sonarr, prowlarr. Torrents are keyed `<client id>/<hash>`.
 - Scans store raw links (file → torrent hashes, torrent → host). Status is computed on read, so changing the target never needs a rescan.

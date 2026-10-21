@@ -1,7 +1,7 @@
 import { h, replace } from "../dom.js";
 import { icon } from "../icons.js";
 import { api } from "../api.js";
-import { number, bytes, plural } from "../format.js";
+import { number, bytes, plural, timeAgo } from "../format.js";
 import { store } from "../store.js";
 import { toast } from "../toast.js";
 import { createDialog } from "../dialog.js";
@@ -149,6 +149,11 @@ export function mount(container) {
       ? `${item.on_target_files} of ${item.episodes} on target` : st.label)];
     if (item.kind === "season" && item.airing) flags.push(h("span", { class: "flag tone-info" }, icon("tower-broadcast"), "Airing"));
     else if (item.kind === "season" && !item.complete) flags.push(h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Incomplete season"));
+    if (item.last_grab) {
+      const t = timeAgo(item.last_grab.ts);
+      flags.push(h("a", { class: "flag tone-info link-flag", href: "/history", title: item.last_grab.release },
+        icon("download"), `Grabbed ${!t ? "" : t === "now" ? "just now" : /\d$/.test(t) ? t : `${t} ago`}`));
+    }
     if (item.match === "size") flags.push(h("span", { class: "flag tone-neutral", title: "Linked by exact file size, not by hardlink" }, "by size"));
     flags.push(h("span", { class: "mono muted" }, bytes(item.size)));
 

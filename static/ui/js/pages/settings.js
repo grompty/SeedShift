@@ -280,7 +280,37 @@ export function mount(container) {
       h("div", { class: "divider" }),
       h("div", {}, h("div", { class: "label" }, "Target indexer"), ixEl, ixNote),
       h("div", {}, field("Search with", null, via.el, via.id), viaHint),
+      h("div", { class: "divider" }),
+      replaceToggle(),
     );
+  }
+
+  /* Automatic replace: a toggle with a warning, and a confirm when switching it on. */
+  function replaceToggle() {
+    const warn = h("div", {});
+    const paintWarn = () => replace(warn, draft.auto_replace === "on" ? notice("warning",
+      "Seedshift will tell Radarr/Sonarr to replace your current file with every release you grab here, even when it isn't an upgrade. ",
+      "The old library file is deleted, or moved to the Arr's recycle bin if you've set one up. Your old torrent keeps seeding.") : null);
+    let reverting = false;
+    const sw = toggle("Replace my file after a grab",
+      "When a release you grab here is blocked as \u201cnot an upgrade\u201d, Seedshift has Radarr/Sonarr import it anyway, replacing your current file. Follow it on the History page.",
+      draft.auto_replace === "on", (on) => {
+        if (reverting) return;
+        if (!on) { setDraft("auto_replace", "off"); paintWarn(); return; }
+        const d = createDialog({ title: "Replace files automatically?", size: "sm", role: "alertdialog", tone: "danger" });
+        let confirmed = false;
+        d.body.append(h("p", { class: "hint hint--lead" },
+          "Every release you grab through Seedshift will replace the file you have now, once it's downloaded, even when Radarr or Sonarr doesn't consider it an upgrade."),
+          h("p", { class: "hint" }, "The old library file is deleted, or moved to the Arr's recycle bin if you've set one up. Your old torrent keeps seeding."));
+        d.footer.append(h("span", {}), h("div", { class: "dialog__actions" },
+          btn("btn--tertiary", "Cancel", d.close),
+          btn("btn--danger-solid", "Turn on", () => { confirmed = true; setDraft("auto_replace", "on"); paintWarn(); d.close(); })));
+        d.el.addEventListener("close", () => {
+          if (!confirmed) { reverting = true; sw.click(); reverting = false; }
+        });
+      });
+    paintWarn();
+    return h("div", { class: "stack stack--tight" }, sw, warn);
   }
 
   /* ── Paths ───────────────────────────────────────────────────────── */

@@ -4,6 +4,8 @@ Got a tracker you want to focus on? Seedshift tracks down every title that isn't
 
 It lists every movie and season that isn't seeding on your target tracker, and lets you search and grab it there through Radarr or Sonarr.
 
+![Titles: everything that isn't on the target tracker yet, largest first](docs/screenshots/titles.png)
+
 > [!IMPORTANT]
 > **Built by AI.** The code, interface and docs are written by an AI model. The maintainer decides what to build, tests every release on a real server and publishes it. Read the code before you trust it, and report anything that looks off.
 
@@ -15,6 +17,7 @@ It lists every movie and season that isn't seeding on your target tracker, and l
 - [Usage](#usage)
 - [How it decides](#how-it-decides)
 - [Searching the target](#searching-the-target)
+- [History](#history)
 - [Settings](#settings)
 - [Troubleshooting](#troubleshooting)
 - [Maintainers](#maintainers)
@@ -26,6 +29,7 @@ It lists every movie and season that isn't seeding on your target tracker, and l
 - There's no login. Keep Seedshift on your local network and don't expose it to the internet.
 - Scans only read. Seedshift never changes anything in qBittorrent or your files, and the data share is mounted read-only.
 - The only thing that changes anything is **Grab**, after you confirm it. It asks Radarr or Sonarr to download the release, just like their own Grab button.
+- With **Replace my file after a grab** on (off by default), Seedshift also asks Radarr or Sonarr to import what you grabbed over your current file. That still goes through the Arr.
 - Tracker passkeys are never stored or shown, only tracker host names.
 - API keys and passwords are stored in `/config/settings.json`, readable only by the container's user.
 
@@ -87,7 +91,7 @@ To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 docker compose pull && docker compose up -d
 ```
 
-To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.2.3` instead of `latest`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.2.4` instead of `latest`.
 
 ## Usage
 
@@ -101,6 +105,18 @@ http://YOUR-SERVER:8095
 2. Press **Scan now**. Seedshift reads every torrent and every file in your library. The first scan of a big library can take a few minutes.
 3. Pick your target tracker: press **Make target** next to it on the Overview, or enter it under **Settings → Target tracker**. Changing it later doesn't need a new scan.
 4. Open **Titles**. Everything listed there isn't on your target yet, largest first. Use **Search** on a title to find it on the target and grab it.
+
+### Screenshots
+
+**Overview:** how much you seed on each tracker, and what's left to move.
+
+![Overview](docs/screenshots/overview.png)
+
+**Search:** results from your target tracker only, with Grab and Force grab.
+
+![Search window](docs/screenshots/search.png)
+
+The screenshots use made-up titles and example tracker names.
 
 ### Path mappings
 
@@ -136,7 +152,20 @@ Results can differ between the two. If one finds nothing, try the other.
 
 **Not an upgrade?** If you grab the same quality you already have, Radarr and Sonarr download it but don't replace your file on their own. Finish it with **Manual Import** in Radarr or Sonarr.
 
-**Same size as your file** marks a release that's almost certainly the one you already have. cross-seed can usually add that one without downloading anything.
+### Replace my file after a grab
+
+This setting is off by default.
+
+> [!WARNING]
+> When it's on, every release you grab through Seedshift replaces the file you have now once it's downloaded, even when Radarr or Sonarr doesn't consider it an upgrade. The old library file is deleted, or moved to the Arr's recycle bin if you've set one up. Your old torrent keeps seeding.
+
+Seedshift follows each grab in the Arr's download queue. If the Arr imports it by itself, nothing more happens. If it's blocked as "not an upgrade", Seedshift has the Arr run a manual import over your current file. If it's blocked for any other reason, Seedshift leaves it alone and shows why on the History page.
+
+**Possible match** marks a release from the same group as your file, at nearly the same size. It might be the release you already have, so it's worth a quick check before you grab it. It needs a scan from v0.2.4 or later.
+
+## History
+
+The **History** page lists every grab made through Seedshift: when, which release, through what, and the result, including rejections. With **Replace my file after a grab** on, it also shows where each grab is: downloading, imported, replaced, or blocked. Titles you've grabbed get a **Grabbed** tag on the Titles page. The newest 500 grabs are kept in `/config/history.jsonl`.
 
 ## Settings
 
@@ -145,6 +174,7 @@ Results can differ between the two. If one finds nothing, try the other.
 | Target tracker | none | The tracker you want to focus on, by its announce host (for example `tracker.example.org`). Several hosts of the same site can be comma-separated, and subdomains count too. |
 | Target indexer | picked automatically | Which indexer is your target, for **Search**. Picked automatically when an indexer's site matches the target tracker. |
 | Search with | Radarr / Sonarr | Or Prowlarr, which only searches your target. |
+| Replace my file after a grab | off | Has Radarr/Sonarr import a grabbed release even when it isn't an upgrade. See the warning above. |
 | Matching | Hardlink, then size | Or hardlink only, or size only. |
 | Size match minimum | 50 MB | Smaller files are only matched by hardlink. |
 | Automatic scan | every 6 hours | Or manual only. |

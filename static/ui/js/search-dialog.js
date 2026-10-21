@@ -48,7 +48,7 @@ export function openSearch(item) {
 
   function resultCard(r) {
     const flags = [];
-    if (r.same_size) flags.push(h("span", { class: "flag tone-success" }, icon("circle-check"), "Same size as your file"));
+    if (r.same_release) flags.push(h("span", { class: "flag tone-info" }, icon("circle-info"), "Possible match"));
     if (r.rejected) flags.push(h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), r.rejections[0] || `${arr} would reject it`));
     const button = r.grabbed
       ? h("span", { class: "status status--success" }, r.grabbed)
@@ -105,7 +105,8 @@ export function openSearch(item) {
     const err = h("div", {});
     const lines = [h("p", { class: "mono release__title" }, r.title),
       h("p", { class: "hint hint--lead" }, `${arr} downloads it (${bytes(r.size)}) to qBittorrent with its usual category and tags.`)];
-    if (r.same_size) lines.push(notice("info", "This is almost certainly the release you already have. cross-seed can usually add it without downloading anything."));
+    if (job.auto_replace) lines.push(notice("warning", "When it's downloaded, it replaces your current file."));
+    if (r.same_release) lines.push(notice("info", "This might be the release you already have. Worth a quick check before you grab it."));
     if (r.rejected) lines.push(notice("warning", `${arr} would normally skip it: ${r.rejections.join("; ")}.`));
     if (job.via === "prowlarr") lines.push(h("p", { class: "hint" }, `${arr} checks it against your profile first and can still refuse it.`));
     c.body.append(...lines, err);

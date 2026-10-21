@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.2.4
+
+- **History page:** every grab made through Seedshift, with its result. Grabbed titles get a **Grabbed** tag on Titles.
+- README screenshots, made from a demo library with made-up titles.
+- **Replace my file after a grab** (off by default, with a warning and a confirm): Seedshift follows each grab in Radarr/Sonarr's queue, and when it's blocked as "not an upgrade" it has the Arr run a manual import over your current file. Other blocks are left alone and shown on History.
+
+- New icon: two database stacks with arrows circling between them, in the sidebar and as the browser tab icon.
+- The sidebar shows the version next to the name, and the subtitle now reads "Focus your seed size".
+- Fixed a horizontal scrollbar at the bottom of the sidebar, caused by the collapse button.
+- Search no longer calls a release "the one you already have" from size alone. **Possible match** now also needs the same release group as your file. Run a new scan to get the group information.
+
 ## v0.2.3
 
 - New README, plus CONTRIBUTING.md (building from source, development, releasing) and an MIT license.
