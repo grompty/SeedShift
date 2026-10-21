@@ -91,7 +91,7 @@ To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 docker compose pull && docker compose up -d
 ```
 
-To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.2.4` instead of `latest`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.2.6` instead of `latest`.
 
 ## Usage
 
@@ -105,6 +105,9 @@ http://YOUR-SERVER:8095
 2. Press **Scan now**. Seedshift reads every torrent and every file in your library. The first scan of a big library can take a few minutes.
 3. Pick your target tracker: press **Make target** next to it on the Overview, or enter it under **Settings → Target tracker**. Changing it later doesn't need a new scan.
 4. Open **Titles**. Everything listed there isn't on your target yet, largest first. Use **Search** on a title to find it on the target and grab it.
+
+> [!WARNING]
+> Grabbing downloads from your target tracker, so it counts against your ratio there unless the release is freeleech. Go a few titles at a time. See [Mind your ratio](#searching-the-target).
 
 ### Screenshots
 
@@ -142,6 +145,9 @@ Files are linked to torrents by **hardlink** when Seedshift can see your data sh
 ## Searching the target
 
 **Search** on a title shows releases from your target tracker only. For a show it searches the whole season, so season packs come first. **Grab** sends the release to Radarr or Sonarr, which download it with your usual quality profile, category and tags.
+
+> [!WARNING]
+> **Mind your ratio.** Every release you grab downloads from your target tracker and counts against your ratio there, unless it's freeleech. Moving a lot of seed size at once can drop your ratio quickly. Check the tracker's freeleech and ratio rules, keep a buffer, and grab a few titles at a time.
 
 Under **Settings → Target tracker → Search with** you choose how:
 

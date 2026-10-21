@@ -86,7 +86,7 @@ Things that must keep working:
 
 Images are built by GitHub Actions and published to `ghcr.io/grompty/seedshift`:
 
-- A tag such as `v0.2.4` publishes `0.2.4`, `0.2` and `latest`.
+- A tag such as `v0.2.6` publishes `0.2.6`, `0.2` and `latest`.
 - A push to `main` publishes `edge`, for testing.
 
 To release:
@@ -96,5 +96,5 @@ To release:
 3. Commit, tag and push:
 
 ```bash
-git commit -am "v0.2.4" && git tag v0.2.4 && git push && git push --tags
+git commit -am "v0.2.6" && git tag v0.2.6 && git push && git push --tags
 ```

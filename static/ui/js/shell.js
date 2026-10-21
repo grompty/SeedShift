@@ -71,7 +71,11 @@ function renderServices(o) {
   const errors = o?.errors || [];
   const failing = new Set(errors.map((e) => e.source));
   const targets = o?.targets || [];
-  const overall = !targets.length ? ["warning", "No target"] : failing.size ? ["danger", `${failing.size} failed`] : ["success", "Ready"];
+  // Connection health, shown above the services. Says nothing about the target: that has its own heading.
+  const overall = !connections.length ? ["neutral", "None yet"]
+    : failing.size ? ["danger", `${failing.size} failed`]
+    : !o?.scanned_at ? ["neutral", "Not scanned yet"]
+    : ["success", "All connected"];
 
   const groups = [["qbittorrent", "qBittorrent"], ["radarr", "Radarr"], ["sonarr", "Sonarr"], ["prowlarr", "Prowlarr"]]
     .map(([key, label]) => [key, label, connections.filter((c) => c.type === key)])
@@ -99,15 +103,17 @@ function renderServices(o) {
   const next = scan?.running ? "Now" : o?.next_scan_at ? timeUntil(o.next_scan_at) : "Manual";
   replace(servicesEl,
     h("div", { class: "services__head" },
-      h("span", { class: "services__title" }, "Target"),
-      h("span", { class: `services__overall tone-${overall[0]}` }, h("span", { class: "dot" }), overall[1])),
+      h("span", { class: "services__title" }, targets.length > 1 ? "Target trackers" : "Target tracker")),
     h("div", { class: "target-host mono" }, targets.length ? targets.join(", ") : h("a", { class: "link", href: "/settings?section=target" }, "Choose a tracker")),
+    h("div", { class: "services__head" },
+      h("span", { class: "services__title" }, "Connections"),
+      h("span", { class: `services__overall tone-${overall[0]}` }, h("span", { class: "dot" }), overall[1])),
     h("ul", { class: "services__list" }, rows),
     h("div", { class: "services__sync" },
       h("span", { class: "services__sync-label", title: o?.scanned_at ? `Last scan ${ago(o.scanned_at)}` : "Not scanned yet" }, icon("arrows-rotate"), "Next scan"),
       h("span", { class: "mono services__sync-value" }, next)));
 
-  const summary = `Target ${targets.join(", ") || "not set"}. Next scan ${next}.`;
+  const summary = `Target tracker: ${targets.join(", ") || "not set"}. Connections: ${overall[1]}. Next scan ${next}.`;
   collapsedBadge.title = summary;
   collapsedBadge.setAttribute("aria-label", summary);
   collapsedBadge.classList.toggle("is-alert", failing.size > 0 || !targets.length);

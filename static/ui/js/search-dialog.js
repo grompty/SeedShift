@@ -105,6 +105,7 @@ export function openSearch(item) {
     const err = h("div", {});
     const lines = [h("p", { class: "mono release__title" }, r.title),
       h("p", { class: "hint hint--lead" }, `${arr} downloads it (${bytes(r.size)}) to qBittorrent with its usual category and tags.`)];
+    lines.push(h("p", { class: "hint" }, "Downloading this counts against your ratio on the target, unless it's freeleech."));
     if (job.auto_replace) lines.push(notice("warning", "When it's downloaded, it replaces your current file."));
     if (r.same_release) lines.push(notice("info", "This might be the release you already have. Worth a quick check before you grab it."));
     if (r.rejected) lines.push(notice("warning", `${arr} would normally skip it: ${r.rejections.join("; ")}.`));

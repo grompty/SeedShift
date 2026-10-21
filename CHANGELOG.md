@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.6
+
+- Sidebar: the heading now reads **Target tracker** (or **Target trackers**), with no status next to it. Connection health has its own line above the services: **All connected**, **N failed** or **Not scanned yet**.
+- README: the ratio warning is also shown under Usage, next to the first mention of Search.
+
+## v0.2.5
+
+- New color scheme, Dusk: violet accent on cool gray, so Seedshift no longer looks identical to Trailarr Parrk. The icon follows it.
+- Ratio warning: every Grab confirm notes that downloading counts against your ratio on the target unless it's freeleech, and the README explains why to grab a few titles at a time.
+
 ## v0.2.4
 
 - **History page:** every grab made through Seedshift, with its result. Grabbed titles get a **Grabbed** tag on Titles.

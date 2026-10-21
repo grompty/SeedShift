@@ -12,6 +12,7 @@ Flask + Waitress app that lists Radarr/Sonarr titles not seeding on a chosen tra
 ## Front end rules
 - Same system as Trailarr Parrk v0.8.0: vanilla ES modules, `h()` builder, History router, tokens in `css/tokens.css`, Font Awesome SVGs in `js/icons.js`, native `<dialog>`.
 - Seedshift-only styles go in `css/seedshift.css`; keep the shared CSS files identical to Trailarr Parrk so they can be synced.
+- Theme is Dusk (`data-theme="dusk"`), defined at the bottom of `css/seedshift.css` by overriding the palette variables only.
 - Filters live in the URL.
 
 ## Behavior to keep
