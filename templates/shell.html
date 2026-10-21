@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="moss">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Seedshift</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='ui/favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ui/css/tokens.css') }}?v={{ version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ui/css/base.css') }}?v={{ version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ui/css/components.css') }}?v={{ version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ui/css/shell.css') }}?v={{ version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ui/css/pages.css') }}?v={{ version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ui/css/seedshift.css') }}?v={{ version }}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="shell" data-version="{{ version }}"></div>
+  <noscript><p style="padding:2rem">Seedshift needs JavaScript.</p></noscript>
+  <script type="module" src="{{ url_for('static', filename='ui/js/main.js') }}?v={{ version }}"></script>
+</body>
+</html>

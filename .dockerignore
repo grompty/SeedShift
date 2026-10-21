@@ -1,0 +1,8 @@
+.git
+.github
+config
+dev
+*.md
+__pycache__
+*.pyc
+docker-compose*.yml
