@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.3
+
+- Fixed: Finish import showed your library files instead of the pack's. Seedshift asked Sonarr about the pack's folder together with the series, and Sonarr then ignores the folder and returns the series' existing files. It now asks about the folder alone, keeps only files inside the pack's folder that Sonarr matches to the series, and never offers a library file.
+
 ## v0.3.2
 
 - Finish import shows Sonarr's custom format score when your current file scores higher ("Lower score: 810 vs your 1410"). Those episodes are unticked by default, like other better files.

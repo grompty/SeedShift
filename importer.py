@@ -58,11 +58,17 @@ def _manual_import_items(conn, torrent, series_id):
     an earlier grab, so it only fills in files the folder didn't give (or everything, when Sonarr can't
     read the folder at all).
     """
-    query = urllib.parse.urlencode({"folder": torrent["content_path"], "seriesId": series_id, "filterExistingFiles": "false"})
+    # No seriesId here: with a seriesId and no downloadId, Sonarr ignores the folder and returns the
+    # series' existing library files instead. Sonarr matches the series itself; other series are dropped.
+    root = torrent["content_path"].rstrip("/")
+    query = urllib.parse.urlencode({"folder": root, "filterExistingFiles": "false"})
     try:
         folder = arr_get(conn, f"/api/v3/manualimport?{query}", timeout=60) or []
     except ServiceError:
         folder = []
+    inside = lambda p: str(p or "").lower() == root.lower() or str(p or "").lower().startswith(root.lower() + "/")
+    folder = [mi for mi in folder if inside(mi.get("path"))
+              and (mi.get("series") or {}).get("id") in (None, series_id)]
     did = torrent["hash"].upper()
     try:
         by_id = arr_get(conn, f"/api/v3/manualimport?downloadId={did}&seriesId={series_id}&filterExistingFiles=false") or []
@@ -107,6 +113,7 @@ def preview(key):
         raise ValueError("Run a scan first. This needs a scan from Seedshift v0.3.0 or later.")
 
     items, read_folder = _manual_import_items(conn, pack, series_id)
+    library = {str(f.get("path") or "").lower() for x in scan.get("seasons", []) + scan.get("movies", []) for f in x["files"]}
     by_id = {f.get("id"): f for f in item["files"] if f.get("id")}
     by_episode = {n: f for f in item["files"] for n in f.get("episodes") or []}
     candidates, already, skipped = [], 0, []
@@ -115,6 +122,9 @@ def preview(key):
         skipped.append({"path": mi.get("path") or "", "reason": why})
 
     for mi, download_id in items:
+        if str(mi.get("path") or "").lower() in library:
+            skip(mi, "This is a file in your library, not in the pack.")
+            continue
         reasons = _reasons(mi)
         all_eps = [e for e in mi.get("episodes") or [] if e.get("id")]
         eps = [e for e in all_eps if e.get("seasonNumber", season) == season]

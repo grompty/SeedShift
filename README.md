@@ -94,7 +94,7 @@ To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 docker compose pull && docker compose up -d
 ```
 
-To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.2` instead of `latest`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.3` instead of `latest`.
 
 ## Usage
 

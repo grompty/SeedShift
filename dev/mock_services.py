@@ -310,6 +310,14 @@ def arr_history(arr):
 def sonarr_manualimport():
     """Episodes in a season pack, found by download id (only for packs in Sonarr's category) or by folder."""
     did, folder = request.args.get("downloadId", ""), request.args.get("folder", "")
+    if request.args.get("seriesId") and not did:
+        # Like Sonarr: a seriesId without a downloadId means "the series' existing files", folder or not.
+        sid = int(request.args["seriesId"])
+        return jsonify([{"path": f["path"], "series": {"id": sid}, "seasonNumber": f["seasonNumber"],
+                         "episodes": [{"id": sid * 10000 + f["seasonNumber"] * 100 + 1, "seasonNumber": f["seasonNumber"], "episodeNumber": 1,
+                                       "episodeFileId": f["id"]}],
+                         "quality": f["quality"], "languages": [], "releaseGroup": f["releaseGroup"], "rejections": []}
+                        for f in data["episodefiles"].get(str(sid), [])])
     t = next((t for t in data["torrents"] if (did and t["hash"].upper() == did and t.get("category") == "tv-sonarr")
               or (folder and t.get("content_path") == folder)), None)
     if not t or not t.get("series_id"):
@@ -323,7 +331,7 @@ def sonarr_manualimport():
             continue
         season, ep = int(m.group(1)), int(m.group(2))
         ef = next((x for x in efiles if x["seasonNumber"] == season and f"E{ep:02d}" in x["path"]), None)
-        out.append({"path": "/data/torrents/" + f["name"], "series": {"id": sid}, "seasonNumber": season,
+        out.append({"path": t["content_path"].rsplit("/", 1)[0] + "/" + f["name"], "series": {"id": sid}, "seasonNumber": season,
                     "episodes": [{"id": sid * 10000 + season * 100 + ep, "seasonNumber": season, "episodeNumber": ep,
                                   "episodeFileId": ef["id"] if ef else 0, "hasFile": bool(ef)}],
                     "quality": {"quality": {"id": 3, "name": "WEBDL-1080p", "source": "web", "resolution": 1080}, "revision": {"version": 1}},
