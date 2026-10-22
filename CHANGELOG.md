@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.7
+
+- Titles shows the **Grabbed** tag right after a grab, without refreshing the page.
+- The browser tab icon updates after an update, instead of staying cached.
+
 ## v0.2.6
 
 - Sidebar: the heading now reads **Target tracker** (or **Target trackers**), with no status next to it. Connection health has its own line above the services: **All connected**, **N failed** or **Not scanned yet**.

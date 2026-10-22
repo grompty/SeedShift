@@ -241,7 +241,8 @@ export function mount(container) {
 
   const offTabs = store.subscribe("overview", renderTabs);
   const offScan = store.subscribe("scanFinished", () => load());
+  const offGrab = store.subscribe("grabbed", () => load());
   renderTabs();
   load();
-  return () => { stopped = true; clearTimeout(typing); offTabs(); offScan(); scanBtn.cleanup?.(); };
+  return () => { stopped = true; clearTimeout(typing); offTabs(); offScan(); offGrab(); scanBtn.cleanup?.(); };
 }

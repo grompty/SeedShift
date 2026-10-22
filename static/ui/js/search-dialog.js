@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { bytes, plural } from "./format.js";
 import { toast } from "./toast.js";
 import { createDialog } from "./dialog.js";
+import { store } from "./store.js";
 
 /** "3h", "5d", "4mo", "2y" from hours. */
 function age(hours) {
@@ -116,6 +117,7 @@ export function openSearch(item) {
       try {
         const res = await api.post("/grab", { search_id: job.id, index: r.index });
         r.grabbed = res.message;
+        store.set("grabbed", Date.now()); // pages showing the Grabbed tag reload
         toast(`${res.message} ${r.title}`, "success");
         c.close();
         render();
