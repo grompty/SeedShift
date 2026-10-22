@@ -90,6 +90,8 @@ def _check(entry, queues):
         cmd = arr_get(conn, f"/api/v3/command/{rep['command_id']}") or {}
         status = str(cmd.get("status") or "").lower()
         if status == "completed":
+            if entry.get("action") == "import":
+                return _set(entry, "replaced", f"{arr} imported the episodes from the pack. Scan again to see the season on target.")
             return _set(entry, "replaced", f"{arr} replaced your file with it.")
         if status in ("failed", "aborted", "cancelled"):
             return _set(entry, "failed", f"{arr}'s import failed: {cmd.get('message') or cmd.get('exception') or status}.")

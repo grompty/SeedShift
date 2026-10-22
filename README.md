@@ -17,6 +17,7 @@ It lists every movie and season that isn't seeding on your target tracker, and l
 - [Usage](#usage)
 - [How it decides](#how-it-decides)
 - [Searching the target](#searching-the-target)
+- [Finish import](#finish-import)
 - [History](#history)
 - [Settings](#settings)
 - [Troubleshooting](#troubleshooting)
@@ -30,6 +31,7 @@ It lists every movie and season that isn't seeding on your target tracker, and l
 - Scans only read. Seedshift never changes anything in qBittorrent or your files, and the data share is mounted read-only.
 - The only thing that changes anything is **Grab**, after you confirm it. It asks Radarr or Sonarr to download the release, just like their own Grab button.
 - With **Replace my file after a grab** on (off by default), Seedshift also asks Radarr or Sonarr to import what you grabbed over your current file. That still goes through the Arr.
+- **Finish import**, after you confirm it, asks Sonarr to import episodes from a season pack that's already in qBittorrent. Sonarr copies or hardlinks them, so the torrent keeps seeding.
 - Tracker passkeys are never stored or shown, only tracker host names.
 - API keys and passwords are stored in `/config/settings.json`, readable only by the container's user.
 
@@ -91,7 +93,7 @@ To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 docker compose pull && docker compose up -d
 ```
 
-To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.2.8` instead of `latest`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.0` instead of `latest`.
 
 ## Usage
 
@@ -140,6 +142,10 @@ Every movie and every season gets one status:
 
 Seasons that are still airing are hidden by default, since there's no pack yet. Incomplete seasons are flagged.
 
+**Details** on a season shows where each episode comes from: the target pack, other torrents (with tracker, quality and release group), or nothing at all.
+
+**Some titles will never be on your target**, for example Nordic movies when the target is an English tracker. If they have their own quality profile in Radarr or Sonarr, exclude it under **Settings → Target tracker → Exclude quality profiles**. Those titles are then left out of Titles and the Overview counts, and listed under **Titles → Ignored**. Titles also has a quality profile filter.
+
 Files are linked to torrents by **hardlink** when Seedshift can see your data share, which is exact, and by **exact file size** otherwise. Cross-seeds count automatically.
 
 ## Searching the target
@@ -167,11 +173,27 @@ This setting is off by default.
 
 Seedshift follows each grab in the Arr's download queue. If the Arr imports it by itself, nothing more happens. If it's blocked as "not an upgrade", Seedshift has the Arr run a manual import over your current file. If it's blocked for any other reason, Seedshift leaves it alone and shows why on the History page.
 
+**Already in qBittorrent** marks a release with the same name as a torrent you already have. Grabbing it again usually fails, since qBittorrent refuses duplicates. For a season, use [Finish import](#finish-import) instead.
+
 **Possible match** marks a release from the same group as your file, at nearly the same size. It might be the release you already have, so it's worth a quick check before you grab it. It needs a scan from v0.2.4 or later.
+
+## Finish import
+
+Sometimes the target season pack is already in qBittorrent, but your library still holds other copies of some episodes. Sonarr skipped them as "not an upgrade", or you upgraded a few episodes later. The season then shows as partly on target, with a **Target pack in qBittorrent** tag.
+
+Open **Details** on the season and press **Finish import**. Seedshift asks Sonarr which files in the pack match which episodes, and lists the episodes whose current file isn't from the pack: what you have now, and what the pack has. Tick the ones to replace and confirm. Sonarr imports them, and the next scan shows the season on target.
+
+> [!WARNING]
+> Finish import replaces your current files for the ticked episodes. The old files are deleted, or moved to Sonarr's recycle bin if you've set one up. Episodes where your current file is better than the pack's, such as a later Bluray, are unticked by default.
+
+- Sonarr copies the files, or hardlinks them when hardlinks are on in Sonarr. It never moves them, so the pack keeps seeding. Your old torrents keep seeding too.
+- It also works for a pack Sonarr never imported from. Seedshift finds it by name, and Sonarr reads its folder.
+- Episodes the pack doesn't contain stay as they are.
+- It needs a scan from v0.3.0 or later.
 
 ## History
 
-The **History** page lists every grab made through Seedshift: when, which release, through what, and the result, including rejections. With **Replace my file after a grab** on, it also shows where each grab is: downloading, imported, replaced, or blocked. Titles you've grabbed get a **Grabbed** tag on the Titles page. The newest 500 grabs are kept in `/config/history.jsonl`.
+The **History** page lists every grab and Finish import made through Seedshift: when, which release, through what, and the result, including rejections. With **Replace my file after a grab** on, it also shows where each grab is: downloading, imported, replaced, or blocked. Titles you've grabbed get a **Grabbed** tag on the Titles page. The newest 500 grabs are kept in `/config/history.jsonl`.
 
 ## Settings
 
@@ -180,6 +202,7 @@ The **History** page lists every grab made through Seedshift: when, which releas
 | Target tracker | none | The tracker you want to focus on, by its announce host (for example `tracker.example.org`). Several hosts of the same site can be comma-separated, and subdomains count too. |
 | Target indexer | picked automatically | Which indexer is your target, for **Search**. Picked automatically when an indexer's site matches the target tracker. |
 | Search with | Radarr / Sonarr | Or Prowlarr, which only searches your target. |
+| Exclude quality profiles | none | Titles on these Radarr/Sonarr profiles aren't expected on the target. They're left out of Titles and the counts. |
 | Replace my file after a grab | off | Has Radarr/Sonarr import a grabbed release even when it isn't an upgrade. See the warning above. |
 | Matching | Hardlink, then size | Or hardlink only, or size only. |
 | Size match minimum | 50 MB | Smaller files are only matched by hardlink. |
@@ -199,7 +222,9 @@ Settings, API keys and passwords are stored in `/config/settings.json`. The last
 - Check that the indexer has **interactive search** turned on in Radarr or Sonarr, and that the target indexer under **Settings → Target tracker** is the right one.
 - Try the other **Search with** option. They can find different things.
 
-**A grabbed release never gets imported.** It's probably not an upgrade over your current file. Finish it with **Manual Import** in Radarr or Sonarr.
+**A grabbed release never gets imported.** It's probably not an upgrade over your current file. Finish it with **Manual Import** in Radarr or Sonarr, or for a season, with [Finish import](#finish-import).
+
+**Sonarr or Radarr says "Failed to connect to qBittorrent" when grabbing, but its Test works.** Check the Arr's log. If it shows `409 Conflict` on `torrents/add`, qBittorrent refused the torrent because it's already there. Use [Finish import](#finish-import) for a season, or Manual Import in the Arr.
 
 ## Maintainers
 

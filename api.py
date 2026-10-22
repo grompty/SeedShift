@@ -4,6 +4,7 @@ Errors look like {"error": {"code", "message"}}. Secrets are never returned."""
 from flask import Blueprint, jsonify, request
 
 import engine
+import importer
 import search
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -69,6 +70,7 @@ def items():
     kind = "season" if request.args.get("type") == "series" else "movie"
     q = (request.args.get("q") or "").strip().lower()
     connection = request.args.get("connection") or ""
+    profile = request.args.get("profile") or ""
     status = request.args.get("status") or "need"
     hide_airing = request.args.get("airing") != "show"
     sort = request.args.get("sort") or "size"
@@ -83,13 +85,25 @@ def items():
     all_items = engine.evaluated_items(kind)
     connections = sorted({(i["connection_id"], i["connection_name"]) for i in all_items}, key=lambda c: c[1].lower())
 
+    profiles = {}
+    for i in all_items:
+        if i["profile"] and i["profile_name"]:
+            profiles.setdefault(i["profile"], i["profile_name"])
+    dupes = {n for n in profiles.values() if list(profiles.values()).count(n) > 1}
+    names = {c[0]: c[1] for c in connections}
+    profile_filters = sorted(({"id": k, "name": f"{n} ({names.get(k.split(':')[0], '')})" if n in dupes else n}
+                              for k, n in profiles.items()), key=lambda p: p["name"].lower())
+
     rows = all_items
     if connection:
         rows = [i for i in rows if i["connection_id"] == connection]
+    if profile:
+        rows = [i for i in rows if i["profile"] == profile]
+    # Ignored titles and titles on an excluded quality profile only show under "Ignored".
     if status == "ignored":
-        rows = [i for i in rows if i["ignored"]]
+        rows = [i for i in rows if i["ignored"] or i["excluded"]]
     else:
-        rows = [i for i in rows if not i["ignored"]]
+        rows = [i for i in rows if not i["ignored"] and not i["excluded"]]
         if status in STATUS_FILTERS:
             rows = [i for i in rows if i["status"] in STATUS_FILTERS[status]]
     if kind == "season" and hide_airing and status not in ("on_target", "ignored"):
@@ -114,7 +128,7 @@ def items():
         "total_size": sum(i["size"] for i in rows),
         "page": page,
         "per_page": per_page,
-        "filters": {"connections": [{"id": c[0], "name": c[1]} for c in connections]},
+        "filters": {"connections": [{"id": c[0], "name": c[1]} for c in connections], "profiles": profile_filters},
         "has_scan": engine.last_scan() is not None,
         "scan": engine.scan_state(),
         "targets": engine.target_hosts(),
@@ -197,4 +211,18 @@ def grab():
     data = body()
     index = data.get("index")
     message = search.grab(str(data.get("search_id") or ""), index if isinstance(index, int) else -1)
+    return jsonify({"message": message})
+
+
+@bp.post("/import/preview")
+def import_preview():
+    """Finish import, step 1: which episodes Sonarr would import from the target pack."""
+    return jsonify({"import": importer.preview(str(body().get("key") or ""))})
+
+
+@bp.post("/import")
+def import_run():
+    data = body()
+    indices = data.get("indices")
+    message = importer.run(str(data.get("id") or ""), indices if isinstance(indices, list) else [])
     return jsonify({"message": message})

@@ -7,6 +7,7 @@ import { toast } from "../toast.js";
 import { createDialog } from "../dialog.js";
 import { pageHeading, notice, scanButton, STATUS } from "./common.js";
 import { openSearch } from "../search-dialog.js";
+import { openFinishImport } from "../import-dialog.js";
 
 export const title = "Titles";
 
@@ -30,6 +31,7 @@ export function mount(container) {
     type: query.get("type") === "series" ? "series" : "movie",
     q: query.get("q") || "",
     connection: query.get("connection") || "",
+    profile: query.get("profile") || "",
     status: VIEWS.some((v) => v.value === query.get("status")) ? query.get("status") : "need",
     sort: SORTS.some(([v]) => v === query.get("sort")) ? query.get("sort") : "size",
     airing: query.get("airing") === "show",
@@ -47,6 +49,7 @@ export function mount(container) {
     if (s.type === "series") p.set("type", "series");
     if (s.q) p.set("q", s.q);
     if (s.connection) p.set("connection", s.connection);
+    if (s.profile) p.set("profile", s.profile);
     if (s.status !== "need") p.set("status", s.status);
     if (s.sort !== "size") p.set("sort", s.sort);
     if (s.airing) p.set("airing", "show");
@@ -71,6 +74,7 @@ export function mount(container) {
     oninput: (e) => { clearTimeout(typing); typing = setTimeout(() => change({ q: e.target.value.trim() }), 250); },
   });
   const connEl = h("select", { class: "select", "aria-label": "Filter by connection", onchange: (e) => change({ connection: e.target.value }) });
+  const profileEl = h("select", { class: "select", "aria-label": "Filter by quality profile", onchange: (e) => change({ profile: e.target.value }) });
   const viewEl = h("select", { class: "select", "aria-label": "Filter by status", onchange: (e) => change({ status: e.target.value }) });
   const sortEl = h("select", { class: "select", "aria-label": "Sort", onchange: (e) => change({ sort: e.target.value }) },
     SORTS.map(([v, l]) => h("option", { value: v }, l)));
@@ -84,7 +88,7 @@ export function mount(container) {
   container.append(h("div", { class: "page" }, pageHeading("Titles", scanBtn), bannersEl,
     h("section", { class: "panel trailers", "aria-label": "Library" },
       h("div", { class: "trailers__bar" }, tabsEl,
-        h("div", { class: "trailers__filters" }, h("label", { class: "search" }, icon("magnifying-glass"), searchEl), connEl, viewEl, sortEl, airingEl)),
+        h("div", { class: "trailers__filters" }, h("label", { class: "search" }, icon("magnifying-glass"), searchEl), connEl, profileEl, viewEl, sortEl, airingEl)),
       summaryEl, headEl, listEl, footEl)));
   sortEl.value = state.sort;
 
@@ -92,7 +96,7 @@ export function mount(container) {
     const t = store.get("overview")?.totals;
     replace(tabsEl, [["movie", "Movies", "film", t?.movies.need], ["series", "Shows", "tv", t?.seasons.need]].map(([value, label, ic, count]) =>
       h("button", { type: "button", class: "tab", "aria-pressed": String(state.type === value), onclick: () => {
-        if (state.type !== value) change({ type: value, connection: "", status: state.status === "partial" ? "need" : state.status });
+        if (state.type !== value) change({ type: value, connection: "", profile: "", status: state.status === "partial" ? "need" : state.status });
       } }, icon(ic), label, count != null ? h("span", { class: "tab__count mono", title: "Not on target" }, number(count)) : null)));
     airingEl.hidden = state.type !== "series";
     replace(headEl, h("span", {}, state.type === "series" ? "Season" : "Movie"), h("span", {}, "Seeding on"), h("span", {}, "Actions"));
@@ -103,6 +107,10 @@ export function mount(container) {
     replace(connEl, h("option", { value: "" }, "All connections"), f.connections.map((c) => h("option", { value: c.id }, c.name)));
     connEl.value = state.connection;
     connEl.hidden = f.connections.length < 2;
+    const profiles = f.profiles || [];
+    replace(profileEl, h("option", { value: "" }, "All profiles"), profiles.map((p) => h("option", { value: p.id }, p.name)));
+    profileEl.value = profiles.some((p) => p.id === state.profile) ? state.profile : "";
+    profileEl.hidden = profiles.length < 2 && !state.profile;
     replace(viewEl, VIEWS.filter((v) => !v.series || state.type === "series").map((v) => h("option", { value: v.value }, v.label)));
     viewEl.value = state.status;
     searchEl.placeholder = state.type === "series" ? "Search shows" : "Search movies";
@@ -130,6 +138,7 @@ export function mount(container) {
     }
     if (item.year) bits.push(item.year);
     if (item.quality) bits.push(item.quality);
+    if (item.profile_name && (data.filters.profiles || []).length > 1) bits.push(item.profile_name);
     if ((data.filters.connections || []).length > 1) bits.push(item.connection_name);
     return bits.join(" · ");
   }
@@ -154,6 +163,9 @@ export function mount(container) {
       flags.push(h("a", { class: "flag tone-info link-flag grab-flag", href: "/history", title: item.last_grab.release },
         icon("download"), `Grabbed ${!t ? "" : t === "now" ? "just now" : /\d$/.test(t) ? t : `${t} ago`}`));
     }
+    if (item.pack_ready) flags.push(h("button", { type: "button", class: "flag tone-info link-flag", title: "Show which episodes aren't from it",
+      onclick: () => openDetails(item) }, icon("folder"), "Target pack in qBittorrent"));
+    if (item.excluded) flags.push(h("span", { class: "flag tone-neutral", title: "Excluded in Settings → Target tracker" }, icon("ban"), `Excluded profile: ${item.profile_name}`));
     if (item.match === "size") flags.push(h("span", { class: "flag tone-neutral", title: "Linked by exact file size, not by hardlink" }, "by size"));
     flags.push(h("span", { class: "mono muted" }, bytes(item.size)));
 
@@ -181,11 +193,19 @@ export function mount(container) {
     const label = item.kind === "season" ? `${item.title} · Season ${item.season}` : `${item.title}${item.year ? ` (${item.year})` : ""}`;
     const d = createDialog({ title: label, subtitle: STATUS[item.status].label, size: "lg" });
     d.body.append(h("p", { class: "files__loading muted" }, "Loading…"));
+    const finishBtn = h("button", { type: "button", class: "btn btn--primary", hidden: true,
+      onclick: () => { d.close(); openFinishImport(item, () => load()); } }, icon("list-check"), "Finish import");
     d.footer.append(h("span", {}), h("div", { class: "dialog__actions" },
+      h("button", { type: "button", class: "btn btn--tertiary", onclick: d.close }, "Close"),
       h("button", { type: "button", class: "btn btn--secondary", onclick: () => { d.close(); openSearch(item); } }, icon("magnifying-glass"), "Search target"),
-      h("button", { type: "button", class: "btn btn--tertiary", onclick: d.close }, "Close")));
+      finishBtn));
     try {
       const r = await api.get(`/items/${encodeURIComponent(item.key)}`);
+      if (r.sources) {
+        finishBtn.hidden = !r.finish_import.available;
+        replace(d.body, seasonBreakdown(r));
+        return;
+      }
       const torrents = r.torrents.length ? h("ul", { class: "files" }, r.torrents.map((t) => h("li", { class: "file" },
         h("div", { class: "file__icon" }, icon(t.is_target && t.seeding ? "circle-check" : "tower-broadcast", t.is_target && t.seeding ? "icon tone-success" : "icon")),
         h("div", { class: "file__main" },
@@ -203,6 +223,41 @@ export function mount(container) {
           h("span", { class: "hint" }, `${bytes(f.size)} · ${f.match === "inode" ? "hardlink" : f.match === "size" ? "matched by size" : "no torrent"}`)))));
       replace(d.body, h("div", { class: "stack" }, h("div", { class: "label" }, "Torrents"), torrents, files));
     } catch (e) { replace(d.body, notice("danger", e.message)); }
+  }
+
+  /* Seasons: episodes grouped by the release they come from. */
+  function seasonBreakdown(r) {
+    const fi = r.finish_import;
+    const head = [];
+    if (fi.available) head.push(notice("info", fi.needs_scan ? "Run a scan first, then Finish import can use the target pack."
+      : `The target pack is in qBittorrent, but ${plural(fi.episodes, "episode")} in your library ${fi.episodes === 1 ? "isn't" : "aren't"} from it. Finish import has Sonarr import ${fi.episodes === 1 ? "it" : "them"} from the pack.`));
+    const groups = r.sources.map((g) => {
+      const title = g.kind === "none" ? "Not seeding" : g.name;
+      const sub = g.kind === "none" ? "No torrent in qBittorrent seeds these episodes"
+        : null;
+      return h("li", { class: `source source--${g.kind}` },
+        h("div", { class: "source__head" },
+          icon(g.kind === "pack" ? "folder" : g.kind === "none" ? "circle-xmark" : "tower-broadcast",
+            `icon ${g.kind === "pack" ? "tone-success" : g.kind === "none" ? "tone-danger" : "tone-neutral"}`),
+          h("div", { class: "source__main" },
+            h("div", { class: `source__name${g.kind === "none" ? "" : " mono"}` }, title),
+            h("div", { class: "file__meta" },
+              g.kind === "pack" ? h("span", { class: "flag tone-success" }, "Target pack") : null,
+              g.host ? h("span", { class: `host mono${g.is_target ? " host--target" : ""}` }, g.host) : null,
+              g.client ? h("span", { class: "hint" }, g.client) : null,
+              g.size ? h("span", { class: "mono muted" }, bytes(g.size)) : null,
+              g.kind !== "none" && !g.seeding ? h("span", { class: "flag tone-warning" }, icon("circle-xmark"), g.state) : null,
+              sub ? h("span", { class: "hint" }, sub) : null))),
+        g.episodes.length ? h("ul", { class: "episodes" }, g.episodes.map((e) => h("li", { class: "episode", title: e.path },
+          h("span", { class: "mono episode__label" }, e.label || "?"),
+          h("span", { class: "muted" }, [e.quality, e.group].filter(Boolean).join(" · ")))))
+          : h("p", { class: "hint source__empty" }, "No episodes in your library come from this torrent yet."));
+    });
+    const files = h("details", { class: "file-paths" }, h("summary", {}, `Library files (${r.file_count})`),
+      h("ul", { class: "path-list" }, r.files.map((f) => h("li", {},
+        h("span", { class: "mono" }, f.path), " ",
+        h("span", { class: "hint" }, `${bytes(f.size)} · ${f.match === "inode" ? "hardlink" : f.match === "size" ? "matched by size" : "no torrent"}`)))));
+    return h("div", { class: "stack" }, head, h("div", { class: "label" }, "Where the episodes come from"), h("ul", { class: "sources" }, groups), files);
   }
 
   function renderRows() {
@@ -229,6 +284,7 @@ export function mount(container) {
     const p = new URLSearchParams({ type: state.type, page: state.page, per_page: state.per_page, status: state.status, sort: state.sort });
     if (state.q) p.set("q", state.q);
     if (state.connection) p.set("connection", state.connection);
+    if (state.profile) p.set("profile", state.profile);
     if (state.airing) p.set("airing", "show");
     try {
       const result = await api.get(`/items?${p}`);

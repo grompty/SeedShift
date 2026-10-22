@@ -29,11 +29,12 @@ function row(e) {
   const result = e.ok
     ? h("span", { class: "flag tone-success" }, icon("circle-check"), e.message || "Sent")
     : h("span", { class: "flag tone-danger" }, icon("circle-xmark"), e.message || "Failed");
-  const rep = e.replace && REPLACE[e.replace.state];
+  let rep = e.replace && REPLACE[e.replace.state];
+  if (rep && e.action === "import" && e.replace.state === "replaced") rep = { ...rep, label: "Imported from the pack" };
   return h("li", { class: "trailer-row history-row" },
     h("div", { class: "trailer-row__title" },
       h("div", { class: "trailer-row__name" }, icon(e.kind === "season" ? "tv" : "film", "icon tone-neutral"), h("span", {}, name || e.key)),
-      h("div", { class: "trailer-row__meta" }, [e.connection, e.via === "prowlarr" ? "via Prowlarr" : null, e.forced ? "forced" : null].filter(Boolean).join(" · "))),
+      h("div", { class: "trailer-row__meta" }, [e.connection, e.via === "prowlarr" ? "via Prowlarr" : e.via === "import" ? "Finish import" : null, e.forced ? "forced" : null].filter(Boolean).join(" · "))),
     h("div", { class: "trailer-row__file" },
       h("div", { class: "mono trailer-row__path" }, e.release),
       h("div", { class: "trailer-row__flags" },

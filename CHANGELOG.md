@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.0
+
+Run a new scan after updating. The new features need the quality profiles and episode details it reads.
+
+- **Exclude quality profiles** (#2): titles on chosen Radarr/Sonarr profiles, like a Nordic profile, are left out of Titles and the Overview counts and listed under Ignored. Titles has a quality profile filter too.
+- **Finish import** (#3): when the target season pack is already in qBittorrent but some episodes in your library come from other releases, Seedshift lists them and has Sonarr import them from the pack. Better current files are unticked by default. Sonarr copies or hardlinks, never moves, so the pack keeps seeding. Packs Sonarr never imported from are found by name.
+- **Details** on a season shows where each episode comes from: the target pack, other torrents, or nothing.
+- Titles marks seasons with a **Target pack in qBittorrent**.
+- Search marks releases that are **Already in qBittorrent**, since grabbing them again fails as a duplicate.
+- History lists Finish imports and follows them until Sonarr is done.
+
 ## v0.2.8
 
 - Titles you've grabbed are dimmed until they're on target, so the ones still to do stand out. The **Grabbed** tag and the buttons stay bright.

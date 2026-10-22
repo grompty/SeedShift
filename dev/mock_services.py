@@ -5,6 +5,7 @@ and Prowlarr (/prowlarr). Grabs and pushes are recorded and listed at /_grabs.
 """
 import json
 import os
+import re
 import sys
 
 from flask import Flask, abort, jsonify, request
@@ -78,6 +79,12 @@ def moviefile():
     arr_auth(); return jsonify(data["moviefiles"].get(request.args["movieId"], []))
 
 
+@app.get("/<arr>/api/v3/qualityprofile")
+def qualityprofiles(arr):
+    arr_auth()
+    return jsonify([{"id": 1, "name": "HD-1080p"}, {"id": 2, "name": "Nordic"}] if arr == "radarr" else [{"id": 1, "name": "HD-1080p"}])
+
+
 @app.get("/sonarr/api/v3/system/status")
 def sstatus():
     arr_auth(); return jsonify({"appName": "Sonarr", "version": "4.0.9"})
@@ -133,7 +140,11 @@ def releases_for_movie(movie_id):
 
 
 def releases_for_season(series_id, season):
+    show = next((x["title"].replace(" ", ".") for x in data["series"] if x["id"] == series_id), "Show")
     return [
+        {"guid": f"s{series_id}-{season}-0", "indexerId": 1, "indexer": "TargetTracker (Prowlarr)", "title": f"{show}.S{season:02d}.1080p.WEB-DL-NTb",
+         "size": 8_600_000_000, "seeders": 30, "ageHours": 1500, "protocol": "torrent", "quality": {"quality": {"name": "WEBDL-1080p"}},
+         "customFormatScore": 20, "rejected": False, "rejections": [], "fullSeason": True},
         {"guid": f"s{series_id}-{season}-1", "indexerId": 1, "indexer": "TargetTracker (Prowlarr)", "title": f"Show.S{season:02d}.1080p.WEB-DL-GRP",
          "size": 9_000_000_000, "seeders": 12, "ageHours": 900, "protocol": "torrent", "quality": {"quality": {"name": "WEBDL-1080p"}},
          "customFormatScore": 20, "rejected": False, "rejections": [], "fullSeason": True},
@@ -296,9 +307,36 @@ def arr_history(arr):
     return jsonify({"records": []})
 
 
+def sonarr_manualimport():
+    """Episodes in a season pack, found by download id (only for packs in Sonarr's category) or by folder."""
+    did, folder = request.args.get("downloadId", ""), request.args.get("folder", "")
+    t = next((t for t in data["torrents"] if (did and t["hash"].upper() == did and t.get("category") == "tv-sonarr")
+              or (folder and t.get("content_path") == folder)), None)
+    if not t or not t.get("series_id"):
+        return jsonify([])
+    sid = t["series_id"]
+    efiles = data["episodefiles"].get(str(sid), [])
+    out = []
+    for f in data["files"].get(t["hash"], []):
+        m = re.search(r"S(\d+)E(\d+)", f["name"])
+        if not m:
+            continue
+        season, ep = int(m.group(1)), int(m.group(2))
+        ef = next((x for x in efiles if x["seasonNumber"] == season and f"E{ep:02d}" in x["path"]), None)
+        out.append({"path": "/data/torrents/" + f["name"], "series": {"id": sid}, "seasonNumber": season,
+                    "episodes": [{"id": sid * 10000 + season * 100 + ep, "seasonNumber": season, "episodeNumber": ep,
+                                  "episodeFileId": ef["id"] if ef else 0, "hasFile": bool(ef)}],
+                    "quality": {"quality": {"id": 3, "name": "WEBDL-1080p", "source": "web", "resolution": 1080}, "revision": {"version": 1}},
+                    "languages": [{"id": 1, "name": "English"}], "releaseGroup": "NTb",
+                    "rejections": [{"reason": "Not an upgrade for existing episode file(s)"}] if ef else []})
+    return jsonify(out)
+
+
 @app.get("/<arr>/api/v3/manualimport")
 def arr_manualimport(arr):
     arr_auth()
+    if arr == "sonarr":
+        return sonarr_manualimport()
     did = request.args.get("downloadId", "")
     return jsonify([
         {"path": f"/data/torrents/{did}/movie.mkv", "movie": {"id": 2}, "quality": {"quality": {"name": "Bluray-1080p"}},
@@ -314,7 +352,7 @@ def arr_command(arr):
     cid = len(COMMANDS) + 77
     COMMANDS[cid] = {"downloadId": (body.get("files") or [{}])[0].get("downloadId"), **body}
     GRABS.append({"arr": arr, "kind": "command", "name": body.get("name"), "files": [f["path"] for f in body.get("files", [])],
-                  "importMode": body.get("importMode")})
+                  "episodeIds": [f.get("episodeIds") for f in body.get("files", [])], "importMode": body.get("importMode")})
     return jsonify({"id": cid, "status": "queued"})
 
 

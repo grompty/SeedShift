@@ -375,6 +375,14 @@
   text-decoration: underline;
 }
 
+button.flag {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
 /* Long result messages wrap: keep the icon next to the text, not pushed to the far left. */
 .history-row__result .flag {
   display: inline;
@@ -390,6 +398,160 @@
 .trailer-row.is-grabbed .trailer-row__file > :not(.trailer-row__flags),
 .trailer-row.is-grabbed .trailer-row__flags > :not(.grab-flag) {
   opacity: 0.5;
+}
+
+/* Details for a season: episodes grouped by the release they come from */
+.sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.source {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.source--pack {
+  border-color: color-mix(in srgb, var(--success-dot) 45%, var(--line));
+}
+
+.source__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.source__head > .icon {
+  margin-top: 0.125rem;
+}
+
+.source__main {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.source__name {
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.source__name.mono {
+  font-size: var(--text-xs);
+}
+
+.source__empty {
+  margin: 0;
+}
+
+.episodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--text-xs);
+}
+
+.episode {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.episode__label {
+  color: var(--text-strong);
+  min-width: 2.25rem;
+}
+
+/* Finish import */
+.import-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.import-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.import-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.import-row + .import-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.import-row__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  cursor: pointer;
+}
+
+.import-row__pick input {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+}
+
+.import-row__ep {
+  color: var(--text-strong);
+}
+
+.import-row__from,
+.import-row__to {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+
+.import-row.is-lower .import-row__from > span:first-child {
+  color: var(--text-strong);
+}
+
+@media (max-width: 40rem) {
+  .import-row {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+  }
+
+  .import-row > .icon {
+    display: none;
+  }
+
+  .import-row__to {
+    grid-column: 2;
+  }
+
+  .import-row__to::before {
+    content: "→";
+    color: var(--text-muted);
+  }
 }
 
 /* ── Dusk: Seedshift's own colors ──────────────────────────────────────────

@@ -49,6 +49,7 @@ export function openSearch(item) {
 
   function resultCard(r) {
     const flags = [];
+    if (r.in_client) flags.push(h("span", { class: "flag tone-warning", title: "A torrent with this name is in qBittorrent" }, icon("triangle-exclamation"), "Already in qBittorrent"));
     if (r.same_release) flags.push(h("span", { class: "flag tone-info" }, icon("circle-info"), "Possible match"));
     if (r.rejected) flags.push(h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), r.rejections[0] || `${arr} would reject it`));
     const button = r.grabbed
@@ -108,6 +109,8 @@ export function openSearch(item) {
       h("p", { class: "hint hint--lead" }, `${arr} downloads it (${bytes(r.size)}) to qBittorrent with its usual category and tags.`)];
     lines.push(h("p", { class: "hint" }, "Downloading this counts against your ratio on the target, unless it's freeleech."));
     if (job.auto_replace) lines.push(notice("warning", "When it's downloaded, it replaces your current file."));
+    if (r.in_client) lines.push(notice("warning", "This release is already in qBittorrent, so qBittorrent will most likely refuse it as a duplicate.",
+      item.kind === "season" ? " If its episodes aren't in your library, use Finish import in Details instead." : ""));
     if (r.same_release) lines.push(notice("info", "This might be the release you already have. Worth a quick check before you grab it."));
     if (r.rejected) lines.push(notice("warning", `${arr} would normally skip it: ${r.rejections.join("; ")}.`));
     if (job.via === "prowlarr") lines.push(h("p", { class: "hint" }, `${arr} checks it against your profile first and can still refuse it.`));

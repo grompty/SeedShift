@@ -10,7 +10,8 @@ Never include API keys, passwords, tracker passkeys or your own media paths in i
 | --- | --- |
 | `engine.py` | Settings, qBittorrent/Radarr/Sonarr/Prowlarr clients, scanning, matching and statuses. No Flask. |
 | `search.py` | Search on the target indexer (through the Arr or Prowlarr) and Grab. |
-| `replace.py` | Follows grabs in the Arr's queue and runs the manual import for **Replace my file after a grab**. |
+| `replace.py` | Follows grabs in the Arr's queue and runs the manual import for **Replace my file after a grab**. Also follows Finish imports. |
+| `importer.py` | **Finish import**: lists a season's episodes that aren't from the target pack and has Sonarr import them. |
 | `api.py` | The JSON API under `/api`. |
 | `app.py` | The HTML shell and `/health`. |
 | `templates/`, `static/ui/` | The whole front end: vanilla ES modules, no build step. |
@@ -60,6 +61,8 @@ python3 dev/mock_services.py /tmp/ss-demo/mock.json 9797
 
 The screenshots are taken at 1280×800 and saved in `docs/screenshots/`.
 
+The demo also covers Finish import (Night Market season 1 and Deep Field season 2) and an excludable Nordic quality profile in Radarr.
+
 Start Seedshift against them:
 
 ```bash
@@ -71,7 +74,7 @@ Open `http://localhost:8095`, add the mock connections, and map `/data` to `/tmp
 
 ## Checking a change
 
-- `python3 -m py_compile engine.py search.py api.py app.py`
+- `python3 -m py_compile engine.py search.py replace.py importer.py api.py app.py`
 - Scan, open **Titles**, and run a **Search** against the mocks.
 - Check the interface at desktop and phone width, with no errors in the browser console.
 
@@ -79,6 +82,7 @@ Things that must keep working:
 
 - Scans only read. Seedshift never writes to qBittorrent or your files.
 - Grabs only go through Radarr or Sonarr, always after a confirm.
+- Finish import only goes through Sonarr's manual import, after a confirm, with `importMode: copy` so the pack is never moved.
 - Passkeys are never stored or shown, only tracker host names.
 - A season only counts as on target when one target torrent covers every episode.
 
@@ -86,7 +90,7 @@ Things that must keep working:
 
 Images are built by GitHub Actions and published to `ghcr.io/grompty/seedshift`:
 
-- A tag such as `v0.2.8` publishes `0.2.8`, `0.2` and `latest`.
+- A tag such as `v0.3.0` publishes `0.3.0`, `0.2` and `latest`.
 - A push to `main` publishes `edge`, for testing.
 
 To release:
@@ -96,5 +100,5 @@ To release:
 3. Commit, tag and push:
 
 ```bash
-git commit -am "v0.2.8" && git tag v0.2.8 && git push && git push --tags
+git commit -am "v0.3.0" && git tag v0.3.0 && git push && git push --tags
 ```

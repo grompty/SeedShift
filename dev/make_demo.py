@@ -34,10 +34,10 @@ def link(src, dst):
     os.link(src, dst)
 
 
-def torrent(h, name, host, content, flist, state="stalledUP"):
-    torrents.append({"hash": h, "name": name, "size": sum(s for _, s in flist), "state": state,
+def torrent(h, name, host, content, flist, state="stalledUP", **extra):
+    torrents.append({"hash": h, "name": name, "size": sum(s for _, s in flist), "state": state, "progress": 1,
                      "tracker": f"https://{host}/announce/KEY" if host and state != "stoppedUP" else "",
-                     "content_path": remote(content), "save_path": remote(T), "category": "radarr", "client": None})
+                     "content_path": remote(content), "save_path": remote(T), "category": "radarr", "client": None, **extra})
     trackers[h] = [{"url": f"https://{host}/announce/KEY"}] if host else []
     files[h] = [{"name": n, "size": s, "priority": 1} for n, s in flist]
 
@@ -55,7 +55,10 @@ MOVIES = [
     ("Hollow Creek", 2015, 8.3, "EbP", [OTHER]),
     ("A Winter Fable", 2014, 7.1, "TayTO", [OLD]),
     ("Signal Lost", 2024, 6.2, "NTb", [TARGET]),
+    ("Nordlys", 2021, 16.4, "NORDiC", [OTHER]),
+    ("Fjellvind", 2019, 10.9, "NORDiC", []),
 ]
+NORDIC = {"Nordlys", "Fjellvind"}
 for i, (title, year, gb, group, where) in enumerate(MOVIES, 1):
     dot = title.replace(" ", ".")
     rel = f"{dot}.{year}.1080p.BluRay.x264-{group}"
@@ -74,15 +77,25 @@ for i, (title, year, gb, group, where) in enumerate(MOVIES, 1):
     else:
         mkfile(lib, size)
     movies.append({"id": i, "title": title, "year": year, "titleSlug": f"{dot.lower()}-{year}", "imdbId": f"tt{9000000 + i}",
-                   "tmdbId": 500 + i, "hasFile": True,
+                   "tmdbId": 500 + i, "hasFile": True, "qualityProfileId": 2 if title in NORDIC else 1,
                    "movieFile": {"path": remote(lib), "size": size, "quality": {"quality": {"name": "Bluray-1080p"}},
                                  "sceneName": rel, "releaseGroup": group}})
 
 # (show, seasons: [(number, episodes, total, airing, where)])
 SHOWS = [
     ("Harbor Lights", 2018, [(1, 8, 8, False, "target"), (2, 8, 8, False, "other"), (3, 10, 10, False, "mixed"), (4, 3, 10, True, "other")]),
-    ("Deep Field", 2020, [(1, 6, 6, False, "other"), (2, 6, 6, False, "none")]),
+    ("Deep Field", 2020, [(1, 6, 6, False, "other"), (2, 6, 6, False, "unimported")]),
+    ("Night Market", 2021, [(1, 10, 10, False, "packpartial")]),
 ]
+QUALITY = {"WEBDL-1080p": ("web", 1080), "Bluray-1080p": ("bluray", 1080), "WEBRip-1080p": ("webRip", 1080)}
+
+
+def quality(name):
+    source, res = QUALITY[name]
+    return {"quality": {"id": 3, "name": name, "source": source, "resolution": res}, "revision": {"version": 1, "real": 0}}
+
+
+efid = [100]
 for sid, (show, year, seasons) in enumerate(SHOWS, 10):
     dot = show.replace(" ", ".")
     efiles, meta = [], []
@@ -94,11 +107,31 @@ for sid, (show, year, seasons) in enumerate(SHOWS, 10):
             src = f"{T}/{pack}/{dot}.S{number:02d}E{e:02d}.mkv"
             lib = f"{TV}/{show}/Season {number:02d}/{show} - S{number:02d}E{e:02d}.mkv"
             mkfile(src, size)
-            link(src, lib)
             plist.append((f"{pack}/{dot}.S{number:02d}E{e:02d}.mkv", size))
-            efiles.append({"seasonNumber": number, "path": remote(lib), "size": size, "releaseGroup": "NTb"})
-        if where in ("target", "other", "mixed"):
-            torrent(f"s{sid}{number}", pack, TARGET if where == "target" else OTHER, f"{T}/{pack}", plist)
+            q, group = "WEBDL-1080p", "NTb"
+            # "unimported": the pack is on disk, but the library holds other copies (never imported from it).
+            # "packpartial": E01-E06 come from the pack; E07-E08 from single torrents elsewhere; E09-E10 a later Bluray.
+            if where == "unimported" or (where == "packpartial" and e >= 7):
+                lsize = size + 7_000_000 * e
+                q, group = ("Bluray-1080p", "SPARKS") if e >= 9 else ("WEBRip-1080p", "FLUX")
+                if where == "unimported":
+                    q, group = "WEBRip-1080p", "FLUX"
+                if where == "packpartial" and e in (7, 8):
+                    single = f"{T}/singles/{dot}.S{number:02d}E{e:02d}.1080p.WEBRip-FLUX.mkv"
+                    mkfile(single, lsize)
+                    link(single, lib)
+                    torrent(f"s{sid}{number}x{e}", os.path.basename(single), OTHER, single, [(os.path.basename(single), lsize)])
+                else:
+                    mkfile(lib, lsize)
+                size = lsize
+            else:
+                link(src, lib)
+            efid[0] += 1
+            efiles.append({"id": efid[0], "seasonNumber": number, "path": remote(lib), "relativePath": os.path.relpath(lib, f"{TV}/{show}"),
+                           "size": size, "releaseGroup": group, "quality": quality(q)})
+        if where in ("target", "other", "mixed", "unimported", "packpartial"):
+            torrent(f"s{sid}{number}", pack, OTHER if where in ("other", "mixed") else TARGET, f"{T}/{pack}", plist,
+                    series_id=sid, category="tv-sonarr" if where != "unimported" else "cross-seed")
         if where == "mixed":
             for k, (n, s) in enumerate(plist[:4]):
                 single = f"{T}/singles/{os.path.basename(n)}"
@@ -107,6 +140,7 @@ for sid, (show, year, seasons) in enumerate(SHOWS, 10):
         meta.append({"seasonNumber": number, "statistics": {"episodeCount": eps if airing else total, "totalEpisodeCount": total,
                                                             "episodeFileCount": eps, **({"nextAiring": "2026-11-01T00:00:00Z"} if airing else {})}})
     series.append({"id": sid, "title": show, "year": year, "titleSlug": dot.lower(), "tvdbId": 70000 + sid, "imdbId": f"tt{8000000 + sid}",
+                   "qualityProfileId": 1,
                    "statistics": {"episodeFileCount": len(efiles)}, "seasons": meta})
     episodefiles[str(sid)] = efiles
 

@@ -64,6 +64,7 @@ export function mount(container) {
   let draft = {};
   let mappings = [];
   let indexers = [];
+  let excluded = [];
   let stopped = false;
 
   const navEl = h("nav", { class: "settings-nav", "aria-label": "Settings sections" });
@@ -78,7 +79,8 @@ export function mount(container) {
   const sameMappings = () => JSON.stringify(mappings) === JSON.stringify(server.path_mappings);
   const dirtyKeys = () => Object.keys(draft).filter((k) => String(draft[k]) !== String(server.settings[k]));
   const sameIndexers = () => JSON.stringify(indexers) === JSON.stringify(server.target_indexers);
-  const dirty = () => dirtyKeys().length > 0 || !sameMappings() || !sameIndexers();
+  const sameExcluded = () => JSON.stringify([...excluded].sort()) === JSON.stringify([...server.excluded_profiles].sort());
+  const dirty = () => dirtyKeys().length > 0 || !sameMappings() || !sameIndexers() || !sameExcluded();
   function setDraft(key, value) { draft[key] = value; paintFoot(); }
 
   function paintNav() {
@@ -97,13 +99,14 @@ export function mount(container) {
         btn("btn--tertiary", "Discard", discard, null, { disabled: !d }),
         btn("btn--primary", "Save changes", save, null, { disabled: !d })));
   }
-  function reset() { draft = { ...server.settings }; mappings = structuredClone(server.path_mappings); indexers = [...server.target_indexers]; }
+  function reset() { draft = { ...server.settings }; mappings = structuredClone(server.path_mappings); indexers = [...server.target_indexers]; excluded = [...server.excluded_profiles]; }
   function discard() { reset(); saveMsg = ""; paintSection(); }
   async function save() {
     const payload = {};
     for (const k of dirtyKeys()) payload[k] = draft[k];
     if (!sameMappings()) payload.path_mappings = mappings.filter((m) => m.remote || m.local);
     if (!sameIndexers()) payload.target_indexers = indexers;
+    if (!sameExcluded()) payload.excluded_profiles = excluded;
     try {
       server = await api.put("/settings", payload);
       reset(); replace(bannerEl);
@@ -281,8 +284,26 @@ export function mount(container) {
       h("div", {}, h("div", { class: "label" }, "Target indexer"), ixEl, ixNote),
       h("div", {}, field("Search with", null, via.el, via.id), viaHint),
       h("div", { class: "divider" }),
+      excludedProfiles(),
+      h("div", { class: "divider" }),
       replaceToggle(),
     );
+  }
+
+  /* Quality profiles whose titles aren't expected on the target (e.g. a Nordic profile on an English tracker). */
+  function excludedProfiles() {
+    const chips = h("div", { class: "chips" });
+    const paint = () => replace(chips, server.profiles.length ? server.profiles.map((p) => {
+      const on = excluded.includes(p.id);
+      return h("button", { type: "button", class: `chip chip--pick${on ? " chip--on" : ""}`, "aria-pressed": String(on),
+        title: `${number(p.count)} ${p.type === "radarr" ? "movies" : "series seasons"} in ${p.connection}`,
+        onclick: () => { excluded = on ? excluded.filter((x) => x !== p.id) : [...excluded, p.id]; paint(); paintFoot(); } },
+        icon(on ? "ban" : "plus"), p.label, h("span", { class: "muted" }, number(p.count)));
+    }) : h("span", { class: "hint" }, "Run a scan to list the quality profiles in Radarr and Sonarr."));
+    paint();
+    return h("div", {},
+      h("div", { class: "label" }, "Exclude quality profiles"), chips,
+      h("p", { class: "hint" }, "Titles on these profiles aren't expected on the target, for example a Nordic profile when the target is an English tracker. They're left out of Titles and the Overview counts, and listed under Titles → Ignored."));
   }
 
   /* Automatic replace: a toggle with a warning, and a confirm when switching it on. */

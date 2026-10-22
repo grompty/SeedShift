@@ -33,7 +33,7 @@ from copy import deepcopy
 logging.basicConfig(level=logging.INFO, format="[seedshift] %(message)s")
 log = logging.getLogger("seedshift")
 
-APP_VERSION = "0.2.8"
+APP_VERSION = "0.3.0"
 
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
@@ -118,6 +118,7 @@ def load_settings():
     settings["target_indexers"] = saved.get("target_indexers") if isinstance(saved.get("target_indexers"), list) else []
     settings["path_mappings"] = saved.get("path_mappings") if isinstance(saved.get("path_mappings"), list) else []
     settings["ignored"] = saved.get("ignored") if isinstance(saved.get("ignored"), list) else []
+    settings["excluded_profiles"] = saved.get("excluded_profiles") if isinstance(saved.get("excluded_profiles"), list) else []
     return settings
 
 
@@ -280,6 +281,15 @@ def apply_settings_patch(patch):
             updated[key] = names
         elif key == "path_mappings":
             updated[key] = validate_mappings(value)
+        elif key == "excluded_profiles":
+            if not isinstance(value, list):
+                raise ValueError("Excluded profiles must be a list.")
+            keys = []
+            for v in value:
+                v = str(v or "").strip()
+                if re.fullmatch(r"[a-zA-Z0-9_-]{1,80}:\d{1,9}", v) and v not in keys:
+                    keys.append(v)
+            updated[key] = keys
         elif key == "connections":
             # Used for removals/reordering only; keys of kept connections stay as saved.
             current = {c["id"]: c for c in get_connections()}
@@ -303,8 +313,32 @@ def public_settings():
         "target_indexers": s.get("target_indexers", []),
         "connections": [connection_public(c) for c in s.get("connections", [])],
         "path_mappings": s.get("path_mappings", []),
+        "excluded_profiles": s.get("excluded_profiles", []),
+        "profiles": profile_list(),
         "settings_file": SETTINGS_FILE,
     }
+
+
+def profile_list():
+    """Quality profiles seen in the last scan, with how many titles use each."""
+    scan = last_scan() or {}
+    names = scan.get("profiles") or {}
+    if not names:
+        return []
+    conns = {c["id"]: c for c in library_connections()}
+    counts = {}
+    for item in scan.get("movies", []) + scan.get("seasons", []):
+        if item.get("profile"):
+            counts[item["profile"]] = counts.get(item["profile"], 0) + 1
+    many = len(conns) > 1
+    out = []
+    for key, name in names.items():
+        conn = conns.get(key.split(":")[0])
+        if not conn or not counts.get(key):
+            continue
+        out.append({"id": key, "name": name, "connection": conn["name"], "type": conn["type"], "count": counts[key],
+                    "label": f"{name} ({conn['name']})" if many else name})
+    return sorted(out, key=lambda p: (p["type"], p["connection"].lower(), p["name"].lower()))
 
 
 def connection_public(c):
@@ -724,6 +758,8 @@ def _scan_qbit(mappings, errors):
                     "host": host,
                     "size": int(t.get("size") or t.get("total_size") or 0),
                     "category": t.get("category", ""),
+                    "content_path": t.get("content_path") or posixpath.join(t.get("save_path") or "", t.get("name") or ""),
+                    "progress": float(t.get("progress") if t.get("progress") is not None else 1),
                     "state": t.get("state", ""),
                     "seeding": torrent_is_seeding(t.get("state", "")),
                 }
@@ -747,13 +783,70 @@ def _scan_qbit(mappings, errors):
     return torrents, inode_index, size_index, stats
 
 
-def _scan_radarr(conn, errors):
+def _scan_profiles(conn, profiles):
+    """Quality profile names into profiles {"<conn id>:<profile id>": name}."""
+    try:
+        for p in arr_get(conn, "/api/v3/qualityprofile") or []:
+            if p.get("id") is not None:
+                profiles[f"{conn['id']}:{p['id']}"] = p.get("name") or f"Profile {p['id']}"
+    except ServiceError as e:
+        log.warning(f"{conn['name']}: could not read quality profiles: {e}")
+
+
+def profile_key(conn, record):
+    pid = record.get("qualityProfileId")
+    return f"{conn['id']}:{pid}" if pid is not None else ""
+
+
+SOURCE_RANK = {"unknown": 0, "television": 1, "televisionraw": 1, "tv": 1, "dvd": 2, "webrip": 3, "web": 4,
+               "webdl": 4, "bluray": 5, "blurayraw": 6, "remux": 6}
+
+
+def quality_info(q):
+    """(name, rank) from an Arr quality object. Rank compares resolution, then source, then proper/repack."""
+    q = q or {}
+    inner = q.get("quality") or {}
+    name = inner.get("name") or ""
+    resolution = int(inner.get("resolution") or 0)
+    source = str(inner.get("source") or "").lower().replace("-", "").replace("_", "")
+    if not resolution:
+        m = re.search(r"(\d{3,4})p", name)
+        resolution = int(m.group(1)) if m else 0
+    if not source:
+        low = name.lower().replace("-", "")
+        source = next((s for s in ("remux", "bluray", "webdl", "webrip", "hdtv", "dvd") if s in low), "unknown")
+        source = "television" if source == "hdtv" else source
+    version = int((q.get("revision") or {}).get("version") or 1)
+    rank = [resolution, SOURCE_RANK.get(source, 0), version] if resolution or source != "unknown" else []
+    return name, rank
+
+
+EPISODE_RE = re.compile(r"S(\d{1,3})[ ._-]?E(\d{1,4})((?:[ ._-]?-?E\d{1,4}|-\d{1,3}(?![\dp]))*)", re.I)
+
+
+def episode_numbers(path):
+    """'Show - S03E04E05.mkv' -> [4, 5]."""
+    m = EPISODE_RE.search(posixpath.basename(str(path or "")))
+    if not m:
+        return []
+    nums = [int(m.group(2))] + [int(x) for x in re.findall(r"\d{1,4}", m.group(3) or "")]
+    return sorted(set(n for n in nums if n < 5000))
+
+
+def episode_label(nums):
+    if not nums:
+        return ""
+    return f"E{nums[0]:02d}" if len(nums) == 1 else f"E{nums[0]:02d}–E{nums[-1]:02d}"
+
+
+def _scan_radarr(conn, errors, profiles):
     items = []
     try:
         movies = arr_get(conn, "/api/v3/movie")
     except ServiceError as e:
         errors.append({"source": conn["id"], "message": str(e)})
         return items
+    _scan_profiles(conn, profiles)
     for m in movies:
         if not m.get("hasFile"):
             continue
@@ -779,18 +872,20 @@ def _scan_radarr(conn, errors):
             "quality": ((mf.get("quality") or {}).get("quality") or {}).get("name", ""),
             "release": mf.get("sceneName") or mf.get("releaseGroup") or "",
             "group": mf.get("releaseGroup") or "",
+            "profile": profile_key(conn, m),
             "files": [{"path": mf["path"], "size": int(mf.get("size") or 0)}],
         })
     return items
 
 
-def _scan_sonarr(conn, include_specials, errors):
+def _scan_sonarr(conn, include_specials, errors, profiles):
     items = []
     try:
         series_list = arr_get(conn, "/api/v3/series")
     except ServiceError as e:
         errors.append({"source": conn["id"], "message": str(e)})
         return items
+    _scan_profiles(conn, profiles)
 
     def files_for(series):
         try:
@@ -812,7 +907,11 @@ def _scan_sonarr(conn, include_specials, errors):
                 if number is None or (number == 0 and not include_specials):
                     continue
                 if ef.get("path"):
-                    by_season.setdefault(number, []).append({"path": ef["path"], "size": int(ef.get("size") or 0)})
+                    qname, rank = quality_info(ef.get("quality"))
+                    by_season.setdefault(number, []).append({
+                        "path": ef["path"], "size": int(ef.get("size") or 0), "id": ef.get("id"),
+                        "episodes": episode_numbers(ef.get("relativePath") or ef["path"]),
+                        "quality": qname, "rank": rank, "group": ef.get("releaseGroup") or ""})
                     groups.setdefault(number, set()).add(str(ef.get("releaseGroup") or "").lower())
             for number, season_files in sorted(by_season.items()):
                 stats = (seasons_meta.get(number) or {}).get("statistics") or {}
@@ -835,7 +934,8 @@ def _scan_sonarr(conn, include_specials, errors):
                     "total_episodes": max(total, len(season_files)),
                     "aired_episodes": aired,
                     "airing": airing,
-                    "files": season_files,
+                    "profile": profile_key(conn, series),
+                    "files": sorted(season_files, key=lambda f: (f["episodes"] or [9999], f["path"])),
                     # One group for the whole season only when every episode file has the same one.
                     "group": next(iter(groups.get(number, set()))) if len(groups.get(number, set())) == 1 else "",
                 })
@@ -854,11 +954,12 @@ def run_scan():
 
     _progress("Reading Radarr and Sonarr", 0, 0)
     library = []
+    profiles = {}
     for conn in library_connections():
         if conn["type"] == "radarr":
-            library.extend(_scan_radarr(conn, errors))
+            library.extend(_scan_radarr(conn, errors, profiles))
         else:
-            library.extend(_scan_sonarr(conn, include_specials, errors))
+            library.extend(_scan_sonarr(conn, include_specials, errors, profiles))
 
     _progress("Matching files", 0, len(library))
     match_counts = {"inode": 0, "size": 0, "none": 0}
@@ -903,6 +1004,7 @@ def run_scan():
         "duration": round(time.time() - started, 1),
         "match_mode": mode,
         "torrents": torrents,
+        "profiles": profiles,
         "movies": movies,
         "seasons": seasons,
         "errors": errors,
@@ -983,6 +1085,64 @@ def arr_link(conn, item):
     return f"{base}/{'movie' if item['kind'] == 'movie' else 'series'}/{item['slug']}"
 
 
+# ── Season packs already in qBittorrent ───────────────────────────────────
+# A target season pack can sit in qBittorrent while some (or all) library episodes come from other
+# releases: Sonarr skipped them as "not an upgrade", or they were upgraded later. Finish import
+# (importer.py) has Sonarr import the pack's episodes over those files.
+
+PACK_NAME_RE = re.compile(r"^(.*?)[ ._\-\[\(]+S(\d{1,3})(?=[ ._\-\]\)]|$)", re.I)
+
+
+def norm_title(text):
+    """'The Show (2018)' / 'The.Show.2018' -> 'the show'."""
+    t = re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()).strip()
+    t = re.sub(r" (19|20)\d\d$", "", t)
+    return t
+
+
+def torrent_complete(t):
+    return t.get("progress", 1) >= 1 or str(t.get("state", "")).endswith("UP") or t.get("seeding", False)
+
+
+def pack_name_index(torrents, targets):
+    """{(normalized show title, season): [torrent keys]} for complete target torrents named like a season pack."""
+    index = {}
+    for key, t in torrents.items():
+        if not host_is_target(t.get("host"), targets) or not torrent_complete(t):
+            continue
+        m = PACK_NAME_RE.match(t.get("name") or "")
+        if m:
+            index.setdefault((norm_title(m.group(1)), int(m.group(2))), []).append(key)
+    return index
+
+
+def season_packs(item, torrents, targets, name_index=None):
+    """Complete target torrents that are this season's pack, best first (covers the most library files).
+
+    Found by the files they're linked to, or by name for a pack whose episodes were never imported.
+    """
+    covered = {}
+    for f in item["files"]:
+        for h in f.get("torrents", []):
+            if h in torrents:
+                covered[h] = covered.get(h, 0) + 1
+    by_name = set((name_index or {}).get((norm_title(item["title"]), item.get("season")), []))
+    packs = []
+    for h in set(covered) | by_name:
+        t = torrents.get(h)
+        if not t or not host_is_target(t.get("host"), targets) or not torrent_complete(t):
+            continue
+        named = bool(PACK_NAME_RE.match(t.get("name") or ""))
+        if h in by_name or named or covered.get(h, 0) >= 2:
+            packs.append(h)
+    return sorted(packs, key=lambda h: (-covered.get(h, 0), -torrents[h].get("size", 0)))
+
+
+def unlinked_to_pack(item, pack_key):
+    """Library files of a season that don't come from the pack."""
+    return [f for f in item["files"] if pack_key not in f.get("torrents", [])]
+
+
 STATUS_ORDER = {"not_seeding": 0, "missing": 1, "target_stopped": 2, "partial": 3, "singles": 4, "on_target": 5}
 
 
@@ -1053,7 +1213,7 @@ def last_grabs():
     """{title key: its newest successful grab}."""
     latest = {}
     for e in grab_history():
-        if e.get("ok") and e.get("key") not in latest:
+        if e.get("ok") and e.get("action") != "import" and e.get("key") not in latest:
             latest[e["key"]] = {"ts": e["ts"], "release": e.get("release", ""), "replace": (e.get("replace") or {}).get("state")}
     return latest
 
@@ -1066,8 +1226,11 @@ def evaluated_items(kind):
     torrents = scan.get("torrents", {})
     targets = target_hosts()
     ignored = set(cfg("ignored"))
+    excluded = set(cfg("excluded_profiles"))
+    profiles = scan.get("profiles") or {}
     connections = {c["id"]: c for c in get_connections()}
     grabs = last_grabs()
+    names = pack_name_index(torrents, targets) if kind == "season" and targets else {}
     out = []
     for item in scan.get("movies" if kind == "movie" else "seasons", []):
         if kind == "movie":
@@ -1077,6 +1240,10 @@ def evaluated_items(kind):
             status, hosts, inactive_hosts, hashes, on_target_files = evaluate_season(item, torrents, targets)
         conn = connections.get(item["connection_id"])
         matches = {f.get("match") for f in item["files"]}
+        pack_ready = False
+        if kind == "season" and status != "on_target" and targets:
+            packs = season_packs(item, torrents, targets, names)
+            pack_ready = bool(packs) and bool(unlinked_to_pack(item, packs[0]))
         out.append({
             "key": item["key"],
             "kind": item["kind"],
@@ -1100,6 +1267,10 @@ def evaluated_items(kind):
             "on_target_files": on_target_files,
             "match": "inode" if "inode" in matches else "size" if "size" in matches else "none",
             "ignored": item["key"] in ignored,
+            "profile": item.get("profile", ""),
+            "profile_name": profiles.get(item.get("profile", ""), ""),
+            "excluded": item.get("profile", "") in excluded,
+            "pack_ready": pack_ready,
             "arr_url": arr_link(conn, item),
             "last_grab": grabs.get(item["key"]),
         })
@@ -1136,9 +1307,54 @@ def item_details(key):
             "state": state_label(torrents[h].get("state", "")),
             "seeding": torrents[h].get("seeding", True),
         } for h, n in sorted(seen.items(), key=lambda kv: (-kv[1], torrents[kv[0]]["name"]))]
-        return {"key": key, "title": item["title"], "season": item.get("season"), "files": files,
-                "file_count": len(item["files"]), "torrents": tlist}
+        out = {"key": key, "title": item["title"], "season": item.get("season"), "files": files,
+               "file_count": len(item["files"]), "torrents": tlist}
+        if item["kind"] == "season":
+            out.update(season_breakdown(item, torrents, targets, clients))
+        return out
     return None
+
+
+def season_breakdown(item, torrents, targets, clients):
+    """Episodes grouped by the release they come from: the target pack, other torrents, or nothing."""
+    packs = season_packs(item, torrents, targets, pack_name_index(torrents, targets)) if targets else []
+    pack = packs[0] if packs else None
+    groups = {}
+
+    def describe(h):
+        t = torrents[h]
+        return {"kind": "pack" if h == pack else "torrent", "name": t["name"], "host": t["host"],
+                "is_target": host_is_target(t["host"], targets), "seeding": t.get("seeding", True),
+                "state": state_label(t.get("state", "")), "client": clients.get(t.get("client"), "") if len(clients) > 1 else "",
+                "size": t.get("size", 0), "episodes": []}
+
+    if pack:
+        groups[pack] = describe(pack)
+    for f in item["files"]:
+        hs = [h for h in f.get("torrents", []) if h in torrents]
+        if pack and pack in hs:
+            src = pack
+        elif hs:
+            # Prefer a seeding target torrent, then any seeding one, then whatever is left.
+            src = sorted(hs, key=lambda h: (not torrents[h].get("seeding", True), not host_is_target(torrents[h]["host"], targets),
+                                            torrents[h]["name"]))[0]
+        else:
+            src = ""
+        if src not in groups:
+            groups[src] = describe(src) if src else {"kind": "none", "name": "", "episodes": []}
+        groups[src]["episodes"].append({"label": episode_label(f.get("episodes") or []), "quality": f.get("quality", ""),
+                                        "group": f.get("group", ""), "path": f.get("path", "")})
+    order = sorted(groups.values(), key=lambda g: ({"pack": 0, "torrent": 1, "none": 2}[g["kind"]], -len(g["episodes"])))
+    missing = len(unlinked_to_pack(item, pack)) if pack else 0
+    return {
+        "sources": order,
+        "finish_import": {
+            "available": bool(pack and missing),
+            "episodes": missing,
+            "pack": torrents[pack]["name"] if pack else "",
+            "needs_scan": bool(pack) and "content_path" not in torrents[pack],
+        },
+    }
 
 
 def overview():
@@ -1177,7 +1393,7 @@ def overview():
     result["trackers"] = sorted(trackers.values(), key=lambda r: -r["size"])
 
     def summarize(items):
-        live = [i for i in items if not i["ignored"]]
+        live = [i for i in items if not i["ignored"] and not i["excluded"]]
         need = [i for i in live if i["status"] != "on_target"]
         return {
             "total": len(live),

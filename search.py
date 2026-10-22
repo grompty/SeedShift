@@ -137,6 +137,22 @@ def same_release(title, release_size, item):
     return bool(release_size and size) and abs(release_size - size) <= size * 0.01
 
 
+def _norm_release(name):
+    """Release names compared loosely: case, dots vs spaces, a trailing .torrent/.mkv don't matter."""
+    name = re.sub(r"\.(torrent|mkv|mp4|avi)$", "", str(name or "").strip(), flags=re.I)
+    return re.sub(r"[^a-z0-9]+", "", name.lower())
+
+
+def torrents_in_client():
+    """{normalized torrent name: tracker host} for every torrent in the last scan."""
+    out = {}
+    for t in ((engine.last_scan() or {}).get("torrents") or {}).values():
+        key = _norm_release(t.get("name"))
+        if key:
+            out.setdefault(key, t.get("host") or "")
+    return out
+
+
 def quality_name(q):
     return (((q or {}).get("quality") or {}).get("name")) or ""
 
@@ -287,8 +303,10 @@ def _run(job_id):
             results = _prowlarr_search(job, conn, kind, arr_id, season, item, set(wanted))
         else:
             results = _arr_search(job, conn, kind, arr_id, season, set(wanted))
+        in_client = torrents_in_client()
         for r in results:
             r["same_release"] = same_release(r["title"], r["size"], item)
+            r["in_client"] = _norm_release(r["title"]) in in_client
         job["results"] = results[:MAX_RESULTS]
         job["hidden"] += max(0, job["total"] - len(results)) if job["via"] == "arr" else 0
         job["status"] = "done"
