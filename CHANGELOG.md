@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0
+
+Run a new scan after updating, so episode numbers and missing episodes come from Sonarr.
+
+- **Titles update on their own after an import.** Every grab is now followed in Radarr/Sonarr's queue, not only with Replace my file after a grab on. When a grab or a Finish import has been imported, Seedshift rescans about a minute later (several imports together give one scan), and the title moves out of "Not on target".
+- A grab Radarr/Sonarr won't import because it isn't an upgrade now shows as **Import blocked** on History, with what to do next.
+- **Missing episodes:** Details lists aired episodes Sonarr has no file for, under "Not in your library". Finish import is offered when the target pack can fill them, ticked by default.
+- **Episode numbers come from Sonarr**, not from file names, so absolute-numbered files sort correctly.
+- **Possible match** uses the release group Radarr/Sonarr reads, so `[group] Title` names work as well as `Title-GROUP`.
+- Sizes are labelled **GiB**, like qBittorrent, since that's how they're counted.
+
 ## v0.3.3
 
 - Fixed: Finish import showed your library files instead of the pack's. Seedshift asked Sonarr about the pack's folder together with the series, and Sonarr then ignores the folder and returns the series' existing files. It now asks about the folder alone, keeps only files inside the pack's folder that Sonarr matches to the series, and never offers a library file.

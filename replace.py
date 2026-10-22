@@ -1,9 +1,12 @@
-"""Automatic replace (Settings → Target tracker → Replace my file after a grab).
+"""Follows grabs and Finish imports until Radarr/Sonarr has imported them.
 
-For every grab made while the setting is on, follow it in Radarr/Sonarr's download queue:
+Every grab is followed in the Arr's download queue:
 - the Arr imports it by itself (it was an upgrade)   -> "imported"
-- the Arr blocks it as "not an upgrade"              -> run a manual import through the Arr -> "replaced"
+- the Arr blocks it as "not an upgrade"
+    with "Replace my file after a grab" on (mode "replace") -> manual import through the Arr -> "replaced"
+    otherwise (mode "follow")                               -> "blocked", with a pointer to Finish import
 - the Arr blocks it for any other reason             -> "blocked", left for a human
+When something gets imported, Seedshift asks for a rescan (batched), so the title updates on its own.
 Everything goes through the Arr's API. Seedshift never touches files.
 """
 
@@ -35,6 +38,8 @@ def _set(entry, state, message, **extra):
     replace = {**(entry.get("replace") or {}), "state": state, "message": message, "updated": engine.utc_now(), **extra}
     entry["replace"] = replace
     engine.update_grab(entry["id"], replace=replace)
+    if state in ("imported", "replaced"):
+        engine.request_scan("import finished")
 
 
 def _queue(conn):
@@ -123,6 +128,10 @@ def _check(entry, queues):
         messages = _messages(record)
         if messages and all(not UPGRADE_BLOCK.search(m) for m in messages):
             return _set(entry, "blocked", f"{arr} blocked the import: " + "; ".join(messages), download_id=did)
+        if rep.get("mode") == "follow":
+            hint = "Use Finish import in the season's Details" if conn["type"] == "sonarr" else "Finish it with Manual Import in Radarr"
+            return _set(entry, "blocked", f"{arr} didn't import it, since it isn't an upgrade over your file. {hint}, "
+                        "or turn on Replace my file after a grab.", download_id=did)
         try:
             command_id, count = _manual_import(conn, entry, did)
         except ServiceError as e:

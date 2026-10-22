@@ -94,7 +94,7 @@ To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 docker compose pull && docker compose up -d
 ```
 
-To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.3` instead of `latest`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.4.0` instead of `latest`.
 
 ## Usage
 
@@ -143,7 +143,7 @@ Every movie and every season gets one status:
 
 Seasons that are still airing are hidden by default, since there's no pack yet. Incomplete seasons are flagged.
 
-**Details** on a season shows where each episode comes from: the target pack, other torrents (with tracker, quality and release group), or nothing at all.
+**Details** on a season shows where each episode comes from: the target pack, other torrents (with tracker, quality and release group), or nothing at all. Aired episodes Sonarr has no file for are listed under "Not in your library".
 
 **Some titles will never be on your target**, for example Nordic movies when the target is an English tracker. If they have their own quality profile in Radarr or Sonarr, exclude it under **Settings → Target tracker → Exclude quality profiles**. Those titles are then left out of Titles and the Overview counts, and listed under **Titles → Ignored**. Titles also has a quality profile filter.
 
@@ -190,6 +190,7 @@ Open **Details** on the season and press **Finish import**. Seedshift asks Sonar
 - Sonarr copies the files, or hardlinks them when hardlinks are on in Sonarr. It never moves them, so the pack keeps seeding. Your old torrents keep seeding too.
 - Sonarr reads the pack's folder, at the path qBittorrent reports for it, so every file in the pack is considered. Files Sonarr can't use are listed with the reason.
 - It also works for a pack Sonarr never imported from. Seedshift finds it by name.
+- Episodes missing from your library are offered too, when the pack has them.
 - Episodes the pack doesn't contain stay as they are.
 - Episodes that share one file now, like a double episode, are imported together, so none is left without a file.
 - It needs a scan from v0.3.0 or later.
@@ -200,7 +201,7 @@ Turn on **Screenshot mode** at the bottom of the sidebar before taking screensho
 
 ## History
 
-The **History** page lists every grab and Finish import made through Seedshift: when, which release, through what, and the result, including rejections. With **Replace my file after a grab** on, it also shows where each grab is: downloading, imported, replaced, or blocked. Titles you've grabbed get a **Grabbed** tag on the Titles page. The newest 500 grabs are kept in `/config/history.jsonl`.
+The **History** page lists every grab and Finish import made through Seedshift: when, which release, through what, and the result, including rejections. Every grab is followed until Radarr or Sonarr has imported it: downloading, imported, or import blocked (for example when it isn't an upgrade over your file). When something has been imported, Seedshift rescans about a minute later, so the title updates without waiting for the next scheduled scan. Titles you've grabbed get a **Grabbed** tag on the Titles page. The newest 500 grabs are kept in `/config/history.jsonl`.
 
 ## Settings
 

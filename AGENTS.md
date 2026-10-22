@@ -17,7 +17,7 @@ Flask + Waitress app that lists Radarr/Sonarr titles not seeding on a chosen tra
 
 ## Behavior to keep
 - Never write to qBittorrent or media. The data share is mounted read-only.
-- Automatic replace (setting, off by default) only uses the Arr's own manual import, and only for "not an upgrade" blocks (`replace.py`).
+- Every grab is followed in the Arr's queue (`replace.py`, mode "follow"). Automatic replace (setting, off by default, mode "replace") additionally runs the Arr's own manual import, only for "not an upgrade" blocks. When an import finishes, `engine.request_scan` asks the scheduler for a batched rescan.
 - Finish import (`importer.py`) only uses Sonarr's manual import, after a confirm, with `importMode: copy` so the target pack is never moved. Like search, the preview stays server-side and the browser sends indices.
 - Excluded quality profiles work like ignored titles: hidden from Titles' normal views and from the Overview counts.
 - Grabs only go through Radarr/Sonarr (release or release/push), always after a confirm in the UI. Search results stay server-side; the browser only sends a result index.

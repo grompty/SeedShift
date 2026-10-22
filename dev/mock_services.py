@@ -100,6 +100,11 @@ def episodefile():
     arr_auth(); return jsonify(data["episodefiles"].get(request.args["seriesId"], []))
 
 
+@app.get("/sonarr/api/v3/episode")
+def episodes():
+    arr_auth(); return jsonify(data.get("episodes", {}).get(request.args["seriesId"], []))
+
+
 # ── Indexers, interactive search, grab, push, parse ──────────────────────
 
 ARR_INDEXERS = [

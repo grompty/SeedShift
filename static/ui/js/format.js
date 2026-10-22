@@ -37,7 +37,7 @@ export function hostOf(url) {
 export function bytes(n) {
   n = Number(n || 0);
   if (!n) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];   // counted in 1024s, like qBittorrent
   let i = 0;
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return `${n >= 100 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;

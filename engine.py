@@ -33,7 +33,7 @@ from copy import deepcopy
 logging.basicConfig(level=logging.INFO, format="[seedshift] %(message)s")
 log = logging.getLogger("seedshift")
 
-APP_VERSION = "0.3.3"
+APP_VERSION = "0.4.0"
 
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
@@ -889,17 +889,30 @@ def _scan_sonarr(conn, include_specials, errors, profiles):
 
     def files_for(series):
         try:
-            return series, arr_get(conn, f"/api/v3/episodefile?seriesId={series['id']}")
+            files = arr_get(conn, f"/api/v3/episodefile?seriesId={series['id']}")
         except ServiceError as e:
-            return series, e
+            return series, e, []
+        try:
+            episodes = arr_get(conn, f"/api/v3/episode?seriesId={series['id']}") or []
+        except ServiceError:
+            episodes = []        # episode numbers then come from file names
+        return series, files, episodes
 
     with_files = [s for s in series_list if ((s.get("statistics") or {}).get("episodeFileCount", 1) or 0) > 0]
     with concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:
-        for series, files in pool.map(files_for, with_files):
+        now = utc_now()
+        for series, files, episodes in pool.map(files_for, with_files):
             if isinstance(files, Exception):
                 errors.append({"source": conn["id"], "message": f"{series.get('title')}: {files}"})
                 continue
             seasons_meta = {s.get("seasonNumber"): s for s in series.get("seasons") or []}
+            # Episode numbers per file straight from Sonarr, and aired episodes that have no file.
+            numbers_by_file, missing = {}, {}
+            for ep in episodes:
+                if ep.get("episodeFileId"):
+                    numbers_by_file.setdefault(ep["episodeFileId"], []).append(int(ep.get("episodeNumber") or 0))
+                elif not ep.get("hasFile") and ep.get("airDateUtc") and str(ep["airDateUtc"]) <= now:
+                    missing.setdefault(ep.get("seasonNumber"), []).append(int(ep.get("episodeNumber") or 0))
             by_season = {}
             groups = {}
             for ef in files:
@@ -910,7 +923,7 @@ def _scan_sonarr(conn, include_specials, errors, profiles):
                     qname, rank = quality_info(ef.get("quality"))
                     by_season.setdefault(number, []).append({
                         "path": ef["path"], "size": int(ef.get("size") or 0), "id": ef.get("id"),
-                        "episodes": episode_numbers(ef.get("relativePath") or ef["path"]),
+                        "episodes": sorted(numbers_by_file.get(ef.get("id")) or episode_numbers(ef.get("relativePath") or ef["path"])),
                         "quality": qname, "rank": rank, "group": ef.get("releaseGroup") or ""})
                     groups.setdefault(number, set()).add(str(ef.get("releaseGroup") or "").lower())
             for number, season_files in sorted(by_season.items()):
@@ -935,6 +948,7 @@ def _scan_sonarr(conn, include_specials, errors, profiles):
                     "aired_episodes": aired,
                     "airing": airing,
                     "profile": profile_key(conn, series),
+                    "missing": sorted(n for n in missing.get(number, []) if n),
                     "files": sorted(season_files, key=lambda f: (f["episodes"] or [9999], f["path"])),
                     # One group for the whole season only when every episode file has the same one.
                     "group": next(iter(groups.get(number, set()))) if len(groups.get(number, set())) == 1 else "",
@@ -1243,7 +1257,7 @@ def evaluated_items(kind):
         pack_ready = False
         if kind == "season" and status != "on_target" and targets:
             packs = season_packs(item, torrents, targets, names)
-            pack_ready = bool(packs) and bool(unlinked_to_pack(item, packs[0]))
+            pack_ready = bool(packs) and bool(unlinked_to_pack(item, packs[0]) or item.get("missing"))
         out.append({
             "key": item["key"],
             "kind": item["kind"],
@@ -1344,13 +1358,18 @@ def season_breakdown(item, torrents, targets, clients):
             groups[src] = describe(src) if src else {"kind": "none", "name": "", "episodes": []}
         groups[src]["episodes"].append({"label": episode_label(f.get("episodes") or []), "quality": f.get("quality", ""),
                                         "group": f.get("group", ""), "path": f.get("path", "")})
-    order = sorted(groups.values(), key=lambda g: ({"pack": 0, "torrent": 1, "none": 2}[g["kind"]], -len(g["episodes"])))
-    missing = len(unlinked_to_pack(item, pack)) if pack else 0
+    absent = item.get("missing") or []
+    if absent:
+        groups["~missing"] = {"kind": "missing", "name": "", "episodes": [{"label": episode_label([n]), "quality": "", "group": "", "path": ""}
+                                                                         for n in absent]}
+    order = sorted(groups.values(), key=lambda g: ({"pack": 0, "torrent": 1, "none": 2, "missing": 3}[g["kind"]], -len(g["episodes"])))
+    missing = (len(unlinked_to_pack(item, pack)) + len(absent)) if pack else 0
     return {
         "sources": order,
         "finish_import": {
             "available": bool(pack and missing),
             "episodes": missing,
+            "absent": len(absent) if pack else 0,
             "pack": torrents[pack]["name"] if pack else "",
             "needs_scan": bool(pack) and "content_path" not in torrents[pack],
         },
@@ -1415,6 +1434,15 @@ def overview():
 
 _next_scan = [None]
 _last_attempt = [0.0]
+_rescan_wanted = [0.0]     # set when an import finished; the scheduler rescans shortly after
+RESCAN_DELAY = 60          # wait a minute, so several imports finishing together give one scan
+
+
+def request_scan(reason="import"):
+    """Ask for a scan soon, e.g. after Sonarr/Radarr imported something. Batched by the scheduler."""
+    if not _rescan_wanted[0]:
+        _rescan_wanted[0] = time.time()
+        log.info(f"Rescan requested ({reason}).")
 
 
 def next_scan_at():
@@ -1426,6 +1454,12 @@ def next_scan_at():
 def scheduler():
     while True:
         try:
+            wanted = _rescan_wanted[0]
+            if wanted and _last_attempt[0] > wanted:
+                _rescan_wanted[0] = 0.0          # a scan started after the request already covers it
+            elif wanted and time.time() - wanted >= RESCAN_DELAY and not scan_state()["running"] and library_connections():
+                _rescan_wanted[0] = 0.0
+                start_scan("import")
             minutes = int(cfg("scan_interval_minutes") or 0)
             if minutes <= 0:
                 _next_scan[0] = None

@@ -124,13 +124,14 @@ def release_group(title):
     return m.group(1).lower() if m else ""
 
 
-def same_release(title, release_size, item):
+def same_release(title, release_size, item, group=""):
     """Same release group as your file and nearly the same size: very likely the exact release you have.
 
     Size alone isn't enough, since different groups' encodes can land within a percent of each other.
+    The group comes from the Arr (it reads "[sam] Title" and "Title-GRP" alike); parsing the name is the fallback.
     """
     mine = str(item.get("group") or "").lower()
-    theirs = release_group(title)
+    theirs = str(group or "").lower() or release_group(title)
     if not mine or not theirs or not (mine == theirs or mine.endswith("-" + theirs)):    # D-Z0N3 parses as z0n3
         return False
     size = item.get("size") or 0
@@ -182,6 +183,7 @@ def _arr_search(job, conn, kind, arr_id, season, wanted):
             "rejections": [str(x.get("reason") if isinstance(x, dict) else x) for x in r.get("rejections") or []],
             "full_season": bool(r.get("fullSeason")) if kind == "season" else None,
             "info_url": r.get("infoUrl") or "",
+            "_group": r.get("releaseGroup") or "",
             "_grab": {"guid": r.get("guid"), "indexerId": r.get("indexerId")},
         })
     if not out:
@@ -272,6 +274,7 @@ def _prowlarr_search(job, conn, kind, arr_id, season, item, wanted):
                 "rejections": [],
                 "full_season": bool(info.get("fullSeason")) if kind == "season" else None,
                 "info_url": r.get("infoUrl") or "",
+                "_group": info.get("releaseGroup") or "",
                 "_push": {
                     "title": r.get("title"), "downloadUrl": r.get("downloadUrl"), "magnetUrl": r.get("magnetUrl"),
                     "infoUrl": r.get("infoUrl"), "guid": r.get("guid"), "indexer": r.get("indexer"),
@@ -305,7 +308,7 @@ def _run(job_id):
             results = _arr_search(job, conn, kind, arr_id, season, set(wanted))
         in_client = torrents_in_client()
         for r in results:
-            r["same_release"] = same_release(r["title"], r["size"], item)
+            r["same_release"] = same_release(r["title"], r["size"], item, r.get("_group"))
             r["in_client"] = _norm_release(r["title"]) in in_client
         job["results"] = results[:MAX_RESULTS]
         job["hidden"] += max(0, job["total"] - len(results)) if job["via"] == "arr" else 0
@@ -401,8 +404,10 @@ def grab(job_id, index):
     except (ServiceError, ValueError) as e:
         engine.record_grab({**entry, "ok": False, "message": str(e)})
         raise
-    if cfg("auto_replace") == "on":
-        entry["replace"] = {"state": "waiting", "message": "Waiting for the download to show up.", "updated": engine.utc_now()}
+    # Every grab is followed until it's imported, so the title refreshes on its own. With "Replace my file
+    # after a grab" on, a "not an upgrade" block is also imported anyway (replace.py).
+    entry["replace"] = {"state": "waiting", "mode": "replace" if cfg("auto_replace") == "on" else "follow",
+                        "message": "Waiting for the download to show up.", "updated": engine.utc_now()}
     engine.record_grab({**entry, "ok": True, "message": message})
     with LOCK:
         job["grabbed"][index] = message

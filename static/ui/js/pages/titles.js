@@ -229,24 +229,27 @@ export function mount(container) {
   function seasonBreakdown(r) {
     const fi = r.finish_import;
     const head = [];
+    const other = fi.episodes - (fi.absent || 0);
+    const parts = [other ? `${plural(other, "episode")} in your library ${other === 1 ? "isn't" : "aren't"} from it` : "",
+      fi.absent ? `${plural(fi.absent, "episode")} ${fi.absent === 1 ? "is" : "are"} missing from your library` : ""].filter(Boolean).join(", and ");
     if (fi.available) head.push(notice("info", fi.needs_scan ? "Run a scan first, then Finish import can use the target pack."
-      : `The target pack is in qBittorrent, but ${plural(fi.episodes, "episode")} in your library ${fi.episodes === 1 ? "isn't" : "aren't"} from it. Finish import has Sonarr import ${fi.episodes === 1 ? "it" : "them"} from the pack.`));
+      : `The target pack is in qBittorrent, but ${parts}. Finish import has Sonarr import ${fi.episodes === 1 ? "it" : "them"} from the pack, if the pack has ${fi.episodes === 1 ? "it" : "them"}.`));
     const groups = r.sources.map((g) => {
-      const title = g.kind === "none" ? "Not seeding" : g.name;
+      const title = g.kind === "none" ? "Not seeding" : g.kind === "missing" ? "Not in your library" : g.name;
       const sub = g.kind === "none" ? "No torrent in qBittorrent seeds these episodes"
-        : null;
+        : g.kind === "missing" ? "Aired, but Sonarr has no file for these episodes" : null;
       return h("li", { class: `source source--${g.kind}` },
         h("div", { class: "source__head" },
-          icon(g.kind === "pack" ? "folder" : g.kind === "none" ? "circle-xmark" : "tower-broadcast",
-            `icon ${g.kind === "pack" ? "tone-success" : g.kind === "none" ? "tone-danger" : "tone-neutral"}`),
+          icon(g.kind === "pack" ? "folder" : g.kind === "none" ? "circle-xmark" : g.kind === "missing" ? "triangle-exclamation" : "tower-broadcast",
+            `icon ${g.kind === "pack" ? "tone-success" : g.kind === "none" ? "tone-danger" : g.kind === "missing" ? "tone-warning" : "tone-neutral"}`),
           h("div", { class: "source__main" },
-            h("div", { class: `source__name${g.kind === "none" ? "" : " mono"}` }, title),
+            h("div", { class: `source__name${g.kind === "none" || g.kind === "missing" ? "" : " mono"}` }, title),
             h("div", { class: "file__meta" },
               g.kind === "pack" ? h("span", { class: "flag tone-success" }, "Target pack") : null,
               g.host ? h("span", { class: `host mono${g.is_target ? " host--target" : ""}` }, g.host) : null,
               g.client ? h("span", { class: "hint" }, g.client) : null,
               g.size ? h("span", { class: "mono muted" }, bytes(g.size)) : null,
-              g.kind !== "none" && !g.seeding ? h("span", { class: "flag tone-warning" }, icon("circle-xmark"), g.state) : null,
+              g.kind !== "none" && g.kind !== "missing" && !g.seeding ? h("span", { class: "flag tone-warning" }, icon("circle-xmark"), g.state) : null,
               sub ? h("span", { class: "hint" }, sub) : null))),
         g.episodes.length ? h("ul", { class: "episodes" }, g.episodes.map((e) => h("li", { class: "episode", title: e.path },
           h("span", { class: "mono episode__label" }, e.label || "?"),

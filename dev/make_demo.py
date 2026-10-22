@@ -96,6 +96,7 @@ def quality(name):
 
 
 efid = [100]
+episodes = {}
 for sid, (show, year, seasons) in enumerate(SHOWS, 10):
     dot = show.replace(" ", ".")
     efiles, meta = [], []
@@ -109,6 +110,9 @@ for sid, (show, year, seasons) in enumerate(SHOWS, 10):
             mkfile(src, size)
             plist.append((f"{pack}/{dot}.S{number:02d}E{e:02d}.mkv", size))
             q, group = "WEBDL-1080p", "NTb"
+            if where == "packpartial" and e == 5:
+                continue        # E05 is in the pack but missing from the library
+
             # "unimported": the pack is on disk, but the library holds other copies (never imported from it).
             # "packpartial": E01-E06 come from the pack; E07-E08 from single torrents elsewhere; E09-E10 a later Bluray.
             if where == "unimported" or (where == "packpartial" and e >= 7):
@@ -139,6 +143,15 @@ for sid, (show, year, seasons) in enumerate(SHOWS, 10):
                 torrent(f"s{sid}{number}e{k}", os.path.basename(n), TARGET, single, [(os.path.basename(n), s)])
         meta.append({"seasonNumber": number, "statistics": {"episodeCount": eps if airing else total, "totalEpisodeCount": total,
                                                             "episodeFileCount": eps, **({"nextAiring": "2026-11-01T00:00:00Z"} if airing else {})}})
+    # Sonarr's episode list: every episode of each season, with its file when there is one.
+    eplist = []
+    for number, eps, total, airing, where in seasons:
+        for e in range(1, total + 1):
+            ef = next((x for x in efiles if x["seasonNumber"] == number and f"S{number:02d}E{e:02d}" in x["path"]), None)
+            eplist.append({"id": sid * 10000 + number * 100 + e, "seasonNumber": number, "episodeNumber": e,
+                           "episodeFileId": ef["id"] if ef else 0, "hasFile": bool(ef),
+                           "airDateUtc": "2026-12-01T00:00:00Z" if airing and e > eps else f"{year}-01-{min(e, 28):02d}T00:00:00Z"})
+    episodes[str(sid)] = eplist
     series.append({"id": sid, "title": show, "year": year, "titleSlug": dot.lower(), "tvdbId": 70000 + sid, "imdbId": f"tt{8000000 + sid}",
                    "qualityProfileId": 1,
                    "statistics": {"episodeFileCount": len(efiles)}, "seasons": meta})
@@ -146,5 +159,5 @@ for sid, (show, year, seasons) in enumerate(SHOWS, 10):
 
 with open(os.path.join(root, "mock.json"), "w") as f:
     json.dump({"torrents": torrents, "trackers": trackers, "files": files, "movies": movies,
-               "moviefiles": moviefiles, "series": series, "episodefiles": episodefiles}, f, indent=1)
+               "moviefiles": moviefiles, "series": series, "episodefiles": episodefiles, "episodes": episodes}, f, indent=1)
 print(root)
