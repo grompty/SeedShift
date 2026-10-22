@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.8
+
+- Titles you've grabbed are dimmed until they're on target, so the ones still to do stand out. The **Grabbed** tag and the buttons stay bright.
+
 ## v0.2.7
 
 - Titles shows the **Grabbed** tag right after a grab, without refreshing the page.

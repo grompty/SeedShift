@@ -151,7 +151,7 @@ export function mount(container) {
     else if (item.kind === "season" && !item.complete) flags.push(h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Incomplete season"));
     if (item.last_grab) {
       const t = timeAgo(item.last_grab.ts);
-      flags.push(h("a", { class: "flag tone-info link-flag", href: "/history", title: item.last_grab.release },
+      flags.push(h("a", { class: "flag tone-info link-flag grab-flag", href: "/history", title: item.last_grab.release },
         icon("download"), `Grabbed ${!t ? "" : t === "now" ? "just now" : /\d$/.test(t) ? t : `${t} ago`}`));
     }
     if (item.match === "size") flags.push(h("span", { class: "flag tone-neutral", title: "Linked by exact file size, not by hardlink" }, "by size"));
@@ -165,7 +165,9 @@ export function mount(container) {
       h("button", { type: "button", class: "btn btn--tertiary btn--sm btn--square", "aria-label": item.ignored ? `Stop ignoring ${item.title}` : `Ignore ${item.title}`,
         title: item.ignored ? "Stop ignoring" : "Ignore (not available on the target)", onclick: () => setIgnored(item, !item.ignored) }, icon(item.ignored ? "arrows-rotate" : "ban")),
     ];
-    return h("li", { class: "trailer-row" },
+    // Grabbed but not on target yet: dim the row so the titles still to do stand out.
+    const grabbed = item.last_grab && item.status !== "on_target";
+    return h("li", { class: `trailer-row${grabbed ? " is-grabbed" : ""}` },
       h("div", { class: "trailer-row__title" },
         h("div", { class: "trailer-row__name" }, icon(item.kind === "season" ? "tv" : "film", "icon tone-neutral"), h("span", {}, item.title)),
         h("div", { class: "trailer-row__meta" }, metaLine(item))),

@@ -385,6 +385,13 @@
   vertical-align: -0.125rem;
 }
 
+/* Titles: a grabbed title waiting for its download is dimmed. The Grabbed tag and the buttons stay bright. */
+.trailer-row.is-grabbed .trailer-row__title,
+.trailer-row.is-grabbed .trailer-row__file > :not(.trailer-row__flags),
+.trailer-row.is-grabbed .trailer-row__flags > :not(.grab-flag) {
+  opacity: 0.5;
+}
+
 /* ── Dusk: Seedshift's own colors ──────────────────────────────────────────
    The shared tokens.css defines the Moss palette (Trailarr Parrk's). Dusk swaps the palette
    values only: cool gray neutrals and a violet accent. Every semantic token (--accent, --text,
