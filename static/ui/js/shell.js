@@ -64,6 +64,13 @@ export function setActiveRoute(route) {
 
 export const ago = (iso) => { const t = timeAgo(iso); return !t ? "" : t === "now" ? "just now" : /\d$/.test(t) ? t : `${t} ago`; };
 
+/* ── Screenshot mode: the API answers with made-up names (privacy.py). Per browser, in a cookie. ── */
+export const screenshotMode = () => document.cookie.split("; ").includes("seedshift_private=1");
+function setScreenshotMode(on) {
+  document.cookie = `seedshift_private=${on ? 1 : 0}; path=/; max-age=${on ? 31536000 : 0}; SameSite=Lax`;
+  location.reload();
+}
+
 /* ── Services panel: target, connections, next scan ─────────────────── */
 
 function renderServices(o) {
@@ -111,7 +118,10 @@ function renderServices(o) {
     h("ul", { class: "services__list" }, rows),
     h("div", { class: "services__sync" },
       h("span", { class: "services__sync-label", title: o?.scanned_at ? `Last scan ${ago(o.scanned_at)}` : "Not scanned yet" }, icon("arrows-rotate"), "Next scan"),
-      h("span", { class: "mono services__sync-value" }, next)));
+      h("span", { class: "mono services__sync-value" }, next)),
+    h("button", { type: "button", class: "services__private", role: "switch", "aria-checked": String(screenshotMode()),
+      title: "Shows made-up titles, trackers and paths, so you can share screenshots", onclick: () => setScreenshotMode(!screenshotMode()) },
+      icon("wand-magic-sparkles"), "Screenshot mode", h("span", { class: `mono ${screenshotMode() ? "tone-accent" : "muted"}` }, screenshotMode() ? "On" : "Off")));
 
   const summary = `Target tracker: ${targets.join(", ") || "not set"}. Connections: ${overall[1]}. Next scan ${next}.`;
   collapsedBadge.title = summary;
@@ -163,6 +173,7 @@ export function buildShell(root) {
     collapsedBadge);
 
   root.append(sidebar, scrim);
+  if (screenshotMode()) root.append(h("div", { class: "private-pill", role: "status" }, icon("wand-magic-sparkles"), "Screenshot mode: names are made up"));
   setCollapsed(readCollapsed());
   renderServices(store.get("overview"));
 

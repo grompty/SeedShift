@@ -25,7 +25,8 @@ Flask + Waitress app that lists Radarr/Sonarr titles not seeding on a chosen tra
 - Scans store raw links (file → torrent hashes, torrent → host). Status is computed on read, so changing the target never needs a rescan.
 - A season is on target only when one target torrent covers every episode file.
 - Never store or show announce passkeys; only hosts.
+- Screenshot mode (`privacy.py`, cookie `seedshift_private=1`) masks every /api JSON response and blocks saving settings. New fields with titles, hosts or paths get masked by the generic text pass; check new keys that need special handling.
 
 ## Checking changes
-- `python3 -m py_compile engine.py search.py replace.py importer.py api.py app.py`
+- `python3 -m py_compile engine.py search.py replace.py importer.py privacy.py api.py app.py`
 - Run the mocks from `dev/`, then exercise the API with Flask's test client and the UI in a headless browser at 1280 px and 390 px.

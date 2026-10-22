@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.1
+
+- **Screenshot mode**, in the sidebar: titles, trackers, indexers, paths and addresses are swapped for made-up names, so screenshots can be shared as they are. Settings can't be saved while it's on.
+- Finish import shows the file names: your current file and the pack's file for each episode.
+- Finish import ticks episodes that share one file (a multi-episode file like E24–E26) together, so none of them is left without a file.
+- Finish import never offers a library file as its own replacement, and leaves files that look the same as yours (same quality and group) unticked.
+
 ## v0.3.0
 
 Run a new scan after updating. The new features need the quality profiles and episode details it reads.

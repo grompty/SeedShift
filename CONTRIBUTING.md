@@ -11,6 +11,7 @@ Never include API keys, passwords, tracker passkeys or your own media paths in i
 | `engine.py` | Settings, qBittorrent/Radarr/Sonarr/Prowlarr clients, scanning, matching and statuses. No Flask. |
 | `search.py` | Search on the target indexer (through the Arr or Prowlarr) and Grab. |
 | `replace.py` | Follows grabs in the Arr's queue and runs the manual import for **Replace my file after a grab**. Also follows Finish imports. |
+| `privacy.py` | **Screenshot mode**: swaps real names in API responses for made-up ones. |
 | `importer.py` | **Finish import**: lists a season's episodes that aren't from the target pack and has Sonarr import them. |
 | `api.py` | The JSON API under `/api`. |
 | `app.py` | The HTML shell and `/health`. |
@@ -74,7 +75,7 @@ Open `http://localhost:8095`, add the mock connections, and map `/data` to `/tmp
 
 ## Checking a change
 
-- `python3 -m py_compile engine.py search.py replace.py importer.py api.py app.py`
+- `python3 -m py_compile engine.py search.py replace.py importer.py privacy.py api.py app.py`
 - Scan, open **Titles**, and run a **Search** against the mocks.
 - Check the interface at desktop and phone width, with no errors in the browser console.
 
@@ -90,7 +91,7 @@ Things that must keep working:
 
 Images are built by GitHub Actions and published to `ghcr.io/grompty/seedshift`:
 
-- A tag such as `v0.3.0` publishes `0.3.0`, `0.2` and `latest`.
+- A tag such as `v0.3.1` publishes `0.3.1`, `0.3` and `latest`.
 - A push to `main` publishes `edge`, for testing.
 
 To release:
@@ -100,5 +101,5 @@ To release:
 3. Commit, tag and push:
 
 ```bash
-git commit -am "v0.3.0" && git tag v0.3.0 && git push && git push --tags
+git commit -am "v0.3.1" && git tag v0.3.1 && git push && git push --tags
 ```

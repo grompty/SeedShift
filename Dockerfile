@@ -4,7 +4,7 @@ RUN pip install --no-cache-dir flask waitress
 
 WORKDIR /app
 
-COPY engine.py api.py search.py replace.py importer.py app.py ./
+COPY engine.py api.py search.py replace.py importer.py privacy.py app.py ./
 COPY templates ./templates
 COPY static ./static
 

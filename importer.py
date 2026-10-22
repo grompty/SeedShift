@@ -46,6 +46,10 @@ def _source(f, torrents, targets):
     return t["host"] or "no tracker"
 
 
+def _same_path(a, b):
+    return bool(a and b) and a.rstrip("/").lower() == b.rstrip("/").lower()
+
+
 def _manual_import_items(conn, torrent, series_id):
     """Sonarr's view of the pack: by download id while Sonarr still tracks it, else by its folder."""
     did = torrent["hash"].upper()
@@ -95,9 +99,15 @@ def preview(key):
         if current and pack_key in current.get("torrents", []):
             already += 1
             continue
+        # Never offer a library file as its own replacement.
+        if current and mi.get("path") and _same_path(mi["path"], current.get("path")):
+            skipped += 1
+            continue
         numbers = sorted(int(e.get("episodeNumber") or 0) for e in eps)
         new_quality, new_rank = engine.quality_info(mi.get("quality"))
         lower = bool(current and current.get("rank") and new_rank and new_rank < current["rank"])
+        same = bool(current and new_quality and new_quality == current.get("quality")
+                    and (mi.get("releaseGroup") or "").lower() == (current.get("group") or "").lower())
         payload = {"path": mi.get("path"), "seriesId": series_id, "episodeIds": [e["id"] for e in eps],
                    "quality": mi.get("quality"), "languages": mi.get("languages") or [],
                    "releaseGroup": mi.get("releaseGroup") or "", "indexerFlags": mi.get("indexerFlags") or 0}
@@ -110,10 +120,22 @@ def preview(key):
             "current": {"quality": current.get("quality", ""), "group": current.get("group", ""),
                         "source": _source(current, torrents, targets)} if current else None,
             "new": {"quality": new_quality, "group": mi.get("releaseGroup") or ""},
-            "lower": lower, "checked": not lower,
+            "lower": lower, "same": same, "checked": not lower and not same,
+            "path": mi.get("path") or "", "current_path": current.get("path", "") if current else "",
             "_file": payload,
         })
     candidates.sort(key=lambda c: c["order"])
+    # Episodes that share one current file (a multi-episode file) go together: importing only some of
+    # them would make Sonarr remove that file and leave the others without one.
+    shared = {}
+    for i, c in enumerate(candidates):
+        if c["current_path"]:
+            shared.setdefault(c["current_path"], []).append(i)
+    for i, c in enumerate(candidates):
+        group = shared.get(c["current_path"], []) if c["current_path"] else []
+        c["together"] = group if len(group) > 1 else []
+        if c["together"]:
+            c["checked"] = not any(candidates[j]["same"] or candidates[j]["lower"] for j in group)
 
     job = {"id": uuid.uuid4().hex[:12], "key": key, "created": time.time(), "connection_id": conn["id"],
            "title": item["title"], "year": item.get("year", ""), "season": season,

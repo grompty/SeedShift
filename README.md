@@ -18,6 +18,7 @@ It lists every movie and season that isn't seeding on your target tracker, and l
 - [How it decides](#how-it-decides)
 - [Searching the target](#searching-the-target)
 - [Finish import](#finish-import)
+- [Screenshot mode](#screenshot-mode)
 - [History](#history)
 - [Settings](#settings)
 - [Troubleshooting](#troubleshooting)
@@ -93,7 +94,7 @@ To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 docker compose pull && docker compose up -d
 ```
 
-To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.0` instead of `latest`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.1` instead of `latest`.
 
 ## Usage
 
@@ -189,7 +190,12 @@ Open **Details** on the season and press **Finish import**. Seedshift asks Sonar
 - Sonarr copies the files, or hardlinks them when hardlinks are on in Sonarr. It never moves them, so the pack keeps seeding. Your old torrents keep seeding too.
 - It also works for a pack Sonarr never imported from. Seedshift finds it by name, and Sonarr reads its folder.
 - Episodes the pack doesn't contain stay as they are.
+- Episodes that share one file now, like a double episode, are imported together, so none is left without a file.
 - It needs a scan from v0.3.0 or later.
+
+## Screenshot mode
+
+Turn on **Screenshot mode** at the bottom of the sidebar before taking screenshots to share, for example in an issue. Titles, tracker hosts, indexer names, file paths and connection addresses are swapped for made-up ones, and the same real name always gets the same fake one. A label in the corner shows it's on. It only affects your browser, and settings can't be saved while it's on.
 
 ## History
 
@@ -236,7 +242,7 @@ Pull requests are welcome. For bigger changes, open an issue first so we can agr
 
 To build the image yourself, run Seedshift from source or make a release, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-When you report a bug, include your Seedshift version (shown on the Overview under **Last scan**) and the relevant part of `docker logs seedshift`. Remove API keys and passwords first.
+Turn on [Screenshot mode](#screenshot-mode) before taking screenshots for an issue. When you report a bug, include your Seedshift version (shown on the Overview under **Last scan**) and the relevant part of `docker logs seedshift`. Remove API keys and passwords first.
 
 ## License
 

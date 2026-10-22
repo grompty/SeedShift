@@ -531,6 +531,13 @@ button.flag {
   min-width: 0;
 }
 
+.import-row__path {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
 .import-row.is-lower .import-row__from > span:first-child {
   color: var(--text-strong);
 }
@@ -552,6 +559,52 @@ button.flag {
     content: "→";
     color: var(--text-muted);
   }
+}
+
+/* Screenshot mode */
+.services__private {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.services__private .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.services__private > span:last-child {
+  margin-left: auto;
+}
+
+.services__private:hover {
+  color: var(--text);
+}
+
+.private-pill {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  font-size: var(--text-xs);
+  color: var(--accent-text);
+  pointer-events: none;
 }
 
 /* ── Dusk: Seedshift's own colors ──────────────────────────────────────────

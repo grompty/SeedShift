@@ -11,6 +11,9 @@ function notice(tone, ...children) {
     h("div", { class: "notice__body" }, children));
 }
 
+/** "…/Pack.Folder/Show.S01E01.mkv" -> "Pack.Folder/Show.S01E01.mkv": enough to see where a file is. */
+const fileName = (p) => String(p).split(/[\\/]/).filter(Boolean).slice(-2).join("/");
+
 const release = (q) => [q.quality, q.group].filter(Boolean).join(" · ") || "unknown";
 
 /** Finish import: tick the episodes Sonarr should import from the target pack, replacing the current files. */
@@ -45,6 +48,7 @@ export function openFinishImport(item, onDone) {
     head.push(h("p", { class: "hint hint--lead" },
       `Sonarr imports the ticked episodes from the pack and replaces your current files. The pack's files are hardlinked or copied, never moved, so the torrent keeps seeding.`));
     if (c.some((x) => x.lower)) head.push(notice("warning", "Some of your current files are better than the pack's. They're unticked, so they stay unless you tick them."));
+    if (c.some((x) => x.same)) head.push(notice("warning", "For some episodes, Sonarr reads the pack's file as the same quality and group you already have. They're unticked. Check the file names below before you import them."));
     if (job.via_folder) head.push(h("p", { class: "hint" }, "Sonarr doesn't track this torrent as one of its downloads, so it reads the pack's folder instead."));
 
     const all = h("input", { type: "checkbox", "aria-label": "All episodes", onchange: (e) => {
@@ -58,18 +62,23 @@ export function openFinishImport(item, onDone) {
     const rows = c.map((x) => h("li", { class: `import-row${x.lower ? " is-lower" : ""}` },
       h("label", { class: "import-row__pick" },
         h("input", { type: "checkbox", checked: picked.has(x.index), onchange: (e) => {
-          if (e.target.checked) picked.add(x.index); else picked.delete(x.index);
+          for (const i of x.together.length ? x.together : [x.index]) { if (e.target.checked) picked.add(i); else picked.delete(i); }
+          if (x.together.length) { render(); return; }
           all.checked = picked.size === c.length;
           all.indeterminate = picked.size > 0 && picked.size < c.length;
           paintButton();
         } }),
         h("span", { class: "mono import-row__ep" }, x.episode || "?")),
       h("div", { class: "import-row__from" },
-        x.current ? [h("span", {}, release(x.current)), h("span", { class: "hint" }, x.current.source)] : h("span", { class: "hint" }, "Not in your library")),
+        x.current ? [h("span", {}, release(x.current)), h("span", { class: "hint" }, x.current.source)] : h("span", { class: "hint" }, "Not in your library"),
+        x.current_path ? h("span", { class: "import-row__path mono", title: x.current_path }, fileName(x.current_path)) : null,
+        x.together.length ? h("span", { class: "hint import-row__path" }, `One file for ${x.together.map((i) => c[i].episode).join(" + ")} now. They're imported together.`) : null),
       icon("arrow-right", "icon tone-neutral"),
       h("div", { class: "import-row__to" },
         h("span", {}, release(x.new)),
-        x.lower ? h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Lower quality") : null)));
+        x.lower ? h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Lower quality") : null,
+        x.same ? h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Same as you have") : null,
+        x.path ? h("span", { class: "import-row__path mono", title: x.path }, fileName(x.path)) : null)));
 
     replace(bodyEl, head,
       h("div", { class: "import-head" }, h("label", { class: "checkline" }, all, "All episodes"),

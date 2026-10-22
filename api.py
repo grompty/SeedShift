@@ -1,10 +1,13 @@
 """JSON API at /api. Mutating requests need Content-Type: application/json.
 Errors look like {"error": {"code", "message"}}. Secrets are never returned."""
 
+import json
+
 from flask import Blueprint, jsonify, request
 
 import engine
 import importer
+import privacy
 import search
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -25,10 +28,31 @@ def error(code, message, status=400):
     return jsonify({"error": {"code": code, "message": message}}), status
 
 
+def private():
+    return request.cookies.get(privacy.COOKIE) == "1"
+
+
 @bp.before_request
 def require_json():
     if request.method in ("POST", "PUT", "DELETE") and not request.is_json:
         return error("unsupported_media_type", "Send JSON with Content-Type: application/json.", 415)
+    # In screenshot mode the page holds made-up names, so saving them would overwrite the real ones.
+    if private() and ((request.method == "PUT" and request.path == "/api/settings") or request.path == "/api/connections/test"):
+        return error("screenshot_mode", "Screenshot mode is on. Turn it off in the sidebar to change settings.", 409)
+
+
+@bp.after_request
+def screenshot_mode(response):
+    if not private() or not response.is_json:
+        return response
+    try:
+        data = response.get_json()
+        if request.path == "/api/indexers":
+            data = privacy.mask_indexer_list(data)
+        response.set_data(json.dumps(privacy.mask(data)))
+    except Exception:
+        engine.log.exception("Screenshot mode")
+    return response
 
 
 def body():

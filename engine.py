@@ -33,7 +33,7 @@ from copy import deepcopy
 logging.basicConfig(level=logging.INFO, format="[seedshift] %(message)s")
 log = logging.getLogger("seedshift")
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/config")
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
