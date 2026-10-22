@@ -38,18 +38,27 @@ export function openFinishImport(item, onDone) {
     d.setHeading(`Finish import · ${item.title} · Season ${item.season}`, job.pack.name);
     const c = job.candidates;
     const head = [];
+    const where = h("p", { class: "hint" }, job.via_folder ? "Sonarr read the pack's folder: " : "Sonarr couldn't read the pack's folder, so it was asked by download ID instead: ",
+      h("span", { class: "mono" }, job.folder));
+    const skippedList = job.skipped ? h("details", { class: "file-paths", open: !c.length },
+      h("summary", {}, `${plural(job.skipped, "file")} in the pack skipped`),
+      h("ul", { class: "path-list" }, job.skipped_files.map((s) => h("li", {},
+        h("span", { class: "mono" }, fileName(s.path) || "?"), " ", h("span", { class: "hint" }, s.reason))))) : null;
     if (!c.length) {
-      head.push(notice("info", job.already
+      head.push(notice("info", job.already && !job.skipped
         ? "Every episode Sonarr found in the pack is already imported from it. Run a scan if the season still shows as partly on target."
-        : "Sonarr didn't match any file in the pack to an episode of this season. Check the pack in Sonarr's Manual Import."));
-      replace(bodyEl, head);
+        : job.already
+          ? `${plural(job.already, "episode")} already come from the pack. Sonarr couldn't use the other files; the reasons are below.`
+          : "Sonarr didn't match any file in the pack to an episode of this season. The reasons are below."));
+      replace(bodyEl, head, where, skippedList);
       return;
     }
     head.push(h("p", { class: "hint hint--lead" },
       `Sonarr imports the ticked episodes from the pack and replaces your current files. The pack's files are hardlinked or copied, never moved, so the torrent keeps seeding.`));
-    if (c.some((x) => x.lower)) head.push(notice("warning", "Some of your current files are better than the pack's. They're unticked, so they stay unless you tick them."));
+    if (c.some((x) => x.lower)) head.push(notice("warning", "Sonarr rates some of your current files higher than the pack's, by quality or custom format score. They're unticked, so they stay unless you tick them. ",
+      c.some((x) => x.score) ? "If you import them anyway, Sonarr may later look for an upgrade again, unless the pack's score meets your profile's upgrade cutoff." : ""));
     if (c.some((x) => x.same)) head.push(notice("warning", "For some episodes, Sonarr reads the pack's file as the same quality and group you already have. They're unticked. Check the file names below before you import them."));
-    if (job.via_folder) head.push(h("p", { class: "hint" }, "Sonarr doesn't track this torrent as one of its downloads, so it reads the pack's folder instead."));
+    head.push(where);
 
     const all = h("input", { type: "checkbox", "aria-label": "All episodes", onchange: (e) => {
       picked.clear();
@@ -76,14 +85,16 @@ export function openFinishImport(item, onDone) {
       icon("arrow-right", "icon tone-neutral"),
       h("div", { class: "import-row__to" },
         h("span", {}, release(x.new)),
-        x.lower ? h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Lower quality") : null,
+        x.score ? h("span", { class: "flag tone-warning", title: "Sonarr's custom format score for the pack's file vs yours" },
+          icon("triangle-exclamation"), `Lower score: ${x.score.new} vs your ${x.score.current}`)
+          : x.lower ? h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Lower quality") : null,
         x.same ? h("span", { class: "flag tone-warning" }, icon("triangle-exclamation"), "Same as you have") : null,
         x.path ? h("span", { class: "import-row__path mono", title: x.path }, fileName(x.path)) : null)));
 
     replace(bodyEl, head,
       h("div", { class: "import-head" }, h("label", { class: "checkline" }, all, "All episodes"),
         job.already ? h("span", { class: "hint" }, `${plural(job.already, "episode")} already from the pack`) : null),
-      h("ul", { class: "import-list" }, rows));
+      h("ul", { class: "import-list" }, rows), skippedList);
     paintButton();
   }
 

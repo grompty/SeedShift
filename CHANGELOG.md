@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.2
+
+- Finish import shows Sonarr's custom format score when your current file scores higher ("Lower score: 810 vs your 1410"). Those episodes are unticked by default, like other better files.
+- Finish import reads the pack's folder first: the same path in qBittorrent and Sonarr, so Sonarr sees every file in the pack. Before, it asked by download ID first, which can return only part of a pack when Sonarr ties that download to an earlier grab. The download ID is now only a fallback.
+- Finish import shows the folder Sonarr read, and lists every file it skipped with the reason (couldn't tell the episode, other season, sample, your own library file).
+
 ## v0.3.1
 
 - **Screenshot mode**, in the sidebar: titles, trackers, indexers, paths and addresses are swapped for made-up names, so screenshots can be shared as they are. Settings can't be saved while it's on.

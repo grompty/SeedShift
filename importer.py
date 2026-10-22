@@ -51,16 +51,38 @@ def _same_path(a, b):
 
 
 def _manual_import_items(conn, torrent, series_id):
-    """Sonarr's view of the pack: by download id while Sonarr still tracks it, else by its folder."""
+    """Sonarr's view of every file in the pack: [(item, download id or None)], and whether it read the folder.
+
+    The pack's folder comes first: it's the same path in qBittorrent and Sonarr, and Sonarr reads every
+    file in it. Asking by download id can return only part of a pack when Sonarr ties that download to
+    an earlier grab, so it only fills in files the folder didn't give (or everything, when Sonarr can't
+    read the folder at all).
+    """
+    query = urllib.parse.urlencode({"folder": torrent["content_path"], "seriesId": series_id, "filterExistingFiles": "false"})
+    try:
+        folder = arr_get(conn, f"/api/v3/manualimport?{query}", timeout=60) or []
+    except ServiceError:
+        folder = []
     did = torrent["hash"].upper()
     try:
-        items = arr_get(conn, f"/api/v3/manualimport?downloadId={did}&seriesId={series_id}&filterExistingFiles=false") or []
+        by_id = arr_get(conn, f"/api/v3/manualimport?downloadId={did}&seriesId={series_id}&filterExistingFiles=false") or []
     except ServiceError:
-        items = []
-    if any(mi.get("episodes") for mi in items):
-        return items, did
-    query = urllib.parse.urlencode({"folder": torrent["content_path"], "seriesId": series_id, "filterExistingFiles": "false"})
-    return arr_get(conn, f"/api/v3/manualimport?{query}", timeout=60) or [], None
+        by_id = []
+    out, seen = [], set()
+    for mi in folder:
+        if mi.get("episodes"):
+            out.append((mi, None))
+            seen.add(str(mi.get("path") or "").lower())
+    for mi in by_id:
+        if mi.get("episodes") and str(mi.get("path") or "").lower() not in seen:
+            out.append((mi, did))
+            seen.add(str(mi.get("path") or "").lower())
+    # Files neither answer could match to an episode, kept so the window can say why.
+    for mi in folder + by_id:
+        if str(mi.get("path") or "").lower() not in seen:
+            out.append((mi, None))
+            seen.add(str(mi.get("path") or "").lower())
+    return out, bool(folder)
 
 
 def preview(key):
@@ -84,15 +106,27 @@ def preview(key):
     if "content_path" not in pack:
         raise ValueError("Run a scan first. This needs a scan from Seedshift v0.3.0 or later.")
 
-    items, download_id = _manual_import_items(conn, pack, series_id)
+    items, read_folder = _manual_import_items(conn, pack, series_id)
     by_id = {f.get("id"): f for f in item["files"] if f.get("id")}
     by_episode = {n: f for f in item["files"] for n in f.get("episodes") or []}
-    candidates, already, skipped = [], 0, 0
-    for mi in items:
-        eps = [e for e in mi.get("episodes") or [] if e.get("seasonNumber", season) == season and e.get("id")]
+    candidates, already, skipped = [], 0, []
+
+    def skip(mi, why):
+        skipped.append({"path": mi.get("path") or "", "reason": why})
+
+    for mi, download_id in items:
         reasons = _reasons(mi)
-        if not eps or any(re.search(r"sample", r, re.I) for r in reasons):
-            skipped += 1
+        all_eps = [e for e in mi.get("episodes") or [] if e.get("id")]
+        eps = [e for e in all_eps if e.get("seasonNumber", season) == season]
+        if any(re.fullmatch(r"\s*sample\.?\s*", r, re.I) for r in reasons):
+            skip(mi, "Sample")
+            continue
+        if not all_eps:
+            skip(mi, "; ".join(reasons) or "Sonarr couldn't tell which episode this is.")
+            continue
+        if not eps:
+            other = sorted({e.get("seasonNumber") for e in all_eps if e.get("seasonNumber") is not None})
+            skip(mi, f"Sonarr matched it to season {', '.join(str(s) for s in other)}." if other else "Not an episode of this season.")
             continue
         current = next((by_id[e["episodeFileId"]] for e in eps if e.get("episodeFileId") in by_id), None) or \
             next((by_episode[e.get("episodeNumber")] for e in eps if e.get("episodeNumber") in by_episode), None)
@@ -101,13 +135,20 @@ def preview(key):
             continue
         # Never offer a library file as its own replacement.
         if current and mi.get("path") and _same_path(mi["path"], current.get("path")):
-            skipped += 1
+            skip(mi, "This is your library file itself.")
             continue
         numbers = sorted(int(e.get("episodeNumber") or 0) for e in eps)
         new_quality, new_rank = engine.quality_info(mi.get("quality"))
         lower = bool(current and current.get("rank") and new_rank and new_rank < current["rank"])
         same = bool(current and new_quality and new_quality == current.get("quality")
                     and (mi.get("releaseGroup") or "").lower() == (current.get("group") or "").lower())
+        # Sonarr's custom format scores: "... New: [...] (810) do not improve on Existing: [...] (1410)".
+        score = None
+        for r in reasons:
+            m = re.search(r"\((-?\d+)\)\s*do not improve on Existing:.*\((-?\d+)\)", r, re.I)
+            if m:
+                score = {"new": int(m.group(1)), "current": int(m.group(2))}
+                lower = lower or score["new"] < score["current"]
         payload = {"path": mi.get("path"), "seriesId": series_id, "episodeIds": [e["id"] for e in eps],
                    "quality": mi.get("quality"), "languages": mi.get("languages") or [],
                    "releaseGroup": mi.get("releaseGroup") or "", "indexerFlags": mi.get("indexerFlags") or 0}
@@ -120,7 +161,7 @@ def preview(key):
             "current": {"quality": current.get("quality", ""), "group": current.get("group", ""),
                         "source": _source(current, torrents, targets)} if current else None,
             "new": {"quality": new_quality, "group": mi.get("releaseGroup") or ""},
-            "lower": lower, "same": same, "checked": not lower and not same,
+            "lower": lower, "same": same, "score": score, "checked": not lower and not same,
             "path": mi.get("path") or "", "current_path": current.get("path", "") if current else "",
             "_file": payload,
         })
@@ -140,8 +181,9 @@ def preview(key):
     job = {"id": uuid.uuid4().hex[:12], "key": key, "created": time.time(), "connection_id": conn["id"],
            "title": item["title"], "year": item.get("year", ""), "season": season,
            "pack": {"name": pack["name"], "host": pack["host"], "size": pack.get("size", 0)},
+           "folder": pack.get("content_path", ""),
            "candidates": candidates, "already": already, "skipped": skipped,
-           "via_folder": download_id is None}
+           "via_folder": read_folder}
     with LOCK:
         now = time.time()
         for jid in [j for j, v in JOBS.items() if now - v["created"] > KEEP_SECONDS]:
@@ -153,7 +195,8 @@ def preview(key):
 def public(job):
     return {
         "id": job["id"], "key": job["key"], "title": job["title"], "season": job["season"], "pack": job["pack"],
-        "already": job["already"], "skipped": job["skipped"], "via_folder": job["via_folder"],
+        "already": job["already"], "skipped": len(job["skipped"]), "skipped_files": job["skipped"][:200],
+        "via_folder": job["via_folder"], "folder": job.get("folder", ""),
         "candidates": [{**{k: v for k, v in c.items() if not k.startswith("_") and k != "order"}, "index": i}
                        for i, c in enumerate(job["candidates"])],
     }

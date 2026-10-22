@@ -94,7 +94,7 @@ To build the image yourself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 docker compose pull && docker compose up -d
 ```
 
-To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.1` instead of `latest`.
+To stay on one release, use a version tag such as `ghcr.io/grompty/seedshift:0.3.2` instead of `latest`.
 
 ## Usage
 
@@ -188,7 +188,8 @@ Open **Details** on the season and press **Finish import**. Seedshift asks Sonar
 > Finish import replaces your current files for the ticked episodes. The old files are deleted, or moved to Sonarr's recycle bin if you've set one up. Episodes where your current file is better than the pack's, such as a later Bluray, are unticked by default.
 
 - Sonarr copies the files, or hardlinks them when hardlinks are on in Sonarr. It never moves them, so the pack keeps seeding. Your old torrents keep seeding too.
-- It also works for a pack Sonarr never imported from. Seedshift finds it by name, and Sonarr reads its folder.
+- Sonarr reads the pack's folder, at the path qBittorrent reports for it, so every file in the pack is considered. Files Sonarr can't use are listed with the reason.
+- It also works for a pack Sonarr never imported from. Seedshift finds it by name.
 - Episodes the pack doesn't contain stay as they are.
 - Episodes that share one file now, like a double episode, are imported together, so none is left without a file.
 - It needs a scan from v0.3.0 or later.
